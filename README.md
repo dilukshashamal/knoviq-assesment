@@ -1,2 +1,1 @@
 # knoviq-assesment
-# knoviq-assesment
