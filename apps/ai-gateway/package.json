@@ -1,0 +1,37 @@
+{
+  "name": "@knoviq/ai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "tsc -b --clean",
+    "dev": "tsx watch src/server.ts",
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "test": "node -e \"console.log('No tests yet for ai-gateway')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@knoviq/ai": "workspace:*",
+    "@knoviq/auth": "workspace:*",
+    "@knoviq/cache": "workspace:*",
+    "@knoviq/config": "workspace:*",
+    "@knoviq/contracts": "workspace:*",
+    "@knoviq/database": "workspace:*",
+    "@knoviq/events": "workspace:*",
+    "@knoviq/logger": "workspace:*",
+    "@knoviq/observability": "workspace:*",
+    "@fastify/websocket": "^11.0.2",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.4.0",
+    "jose": "^6.2.3",
+    "openai": "^6.41.0",
+    "ws": "^8.18.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.19.4"
+  }
+}

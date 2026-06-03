@@ -1,0 +1,35 @@
+{
+  "name": "@knoviq/knowledge-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "tsc -b --clean",
+    "dev": "tsx watch src/server.ts",
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "test": "node -e \"console.log('No tests yet for knowledge-service')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.0.0",
+    "@knoviq/auth": "workspace:*",
+    "@knoviq/cache": "workspace:*",
+    "@knoviq/config": "workspace:*",
+    "@knoviq/contracts": "workspace:*",
+    "@knoviq/database": "workspace:*",
+    "@knoviq/events": "workspace:*",
+    "@knoviq/logger": "workspace:*",
+    "@knoviq/observability": "workspace:*",
+    "dotenv": "^16.6.1",
+    "fastify": "^5.4.0",
+    "jose": "^6.2.3",
+    "openai": "^6.41.0",
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4"
+  }
+}

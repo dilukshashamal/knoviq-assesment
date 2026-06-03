@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Build, Lint, Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  docker:
+    name: Dockerfile Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - package: "@knoviq/auth-service"
+            image: auth-service
+          - package: "@knoviq/ai-gateway"
+            image: ai-gateway
+          - package: "@knoviq/knowledge-service"
+            image: knowledge-service
+          - package: "@knoviq/tool-execution-service"
+            image: tool-execution-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Check backend Dockerfile
+        run: |
+          docker buildx build \
+            --check \
+            -f infra/docker/backend.Dockerfile \
+            --build-arg SERVICE_PACKAGE="${{ matrix.service.package }}" \
+            -t knoviq/${{ matrix.service.image }}:ci \
+            .
+
+  manifests:
+    name: Kubernetes Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Render kustomize base
+        run: kubectl kustomize infra/k8s/base > /tmp/knoviq-k8s.yaml
+
+      - name: Validate required resources
+        run: |
+          grep -q "name: auth-service" /tmp/knoviq-k8s.yaml
+          grep -q "name: ai-gateway" /tmp/knoviq-k8s.yaml
+          grep -q "name: knowledge-service" /tmp/knoviq-k8s.yaml
+          grep -q "name: tool-execution-service" /tmp/knoviq-k8s.yaml
+          grep -q "name: knoviq-migrations" /tmp/knoviq-k8s.yaml

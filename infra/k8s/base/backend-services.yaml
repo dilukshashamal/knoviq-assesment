@@ -1,0 +1,310 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knowledge-uploads
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: knowledge-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  ports:
+    - name: http
+      port: 4001
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: auth-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth-service
+        app.kubernetes.io/part-of: knoviq
+    spec:
+      containers:
+        - name: auth-service
+          image: knoviq/auth-service:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4001
+          envFrom:
+            - configMapRef:
+                name: knoviq-config
+            - secretRef:
+                name: knoviq-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-gateway
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: ai-gateway
+    app.kubernetes.io/part-of: knoviq
+spec:
+  ports:
+    - name: http
+      port: 4002
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: ai-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-gateway
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: ai-gateway
+    app.kubernetes.io/part-of: knoviq
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-gateway
+        app.kubernetes.io/part-of: knoviq
+    spec:
+      containers:
+        - name: ai-gateway
+          image: knoviq/ai-gateway:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4002
+          envFrom:
+            - configMapRef:
+                name: knoviq-config
+            - secretRef:
+                name: knoviq-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: knowledge-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  ports:
+    - name: http
+      port: 4003
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: knowledge-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: knowledge-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: knowledge-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: knowledge-service
+        app.kubernetes.io/part-of: knoviq
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: knowledge-service
+          image: knoviq/knowledge-service:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4003
+          envFrom:
+            - configMapRef:
+                name: knoviq-config
+            - secretRef:
+                name: knoviq-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: uploads
+              mountPath: /var/lib/knoviq/uploads
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: knowledge-uploads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-execution-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: tool-execution-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  ports:
+    - name: http
+      port: 4004
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: tool-execution-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-execution-service
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: tool-execution-service
+    app.kubernetes.io/part-of: knoviq
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tool-execution-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tool-execution-service
+        app.kubernetes.io/part-of: knoviq
+    spec:
+      containers:
+        - name: tool-execution-service
+          image: knoviq/tool-execution-service:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4004
+          envFrom:
+            - configMapRef:
+                name: knoviq-config
+            - secretRef:
+                name: knoviq-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

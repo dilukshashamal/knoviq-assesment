@@ -1,0 +1,31 @@
+{
+  "name": "@knoviq/auth-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "tsc -b --clean",
+    "dev": "tsx watch src/server.ts",
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "test": "node -e \"console.log('No tests yet for auth-service')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@knoviq/auth": "workspace:*",
+    "@knoviq/config": "workspace:*",
+    "@knoviq/contracts": "workspace:*",
+    "@knoviq/database": "workspace:*",
+    "@knoviq/logger": "workspace:*",
+    "@knoviq/observability": "workspace:*",
+    "argon2": "^0.43.0",
+    "dotenv": "^16.5.0",
+    "fastify": "^5.4.0",
+    "jose": "^6.0.11",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4"
+  }
+}

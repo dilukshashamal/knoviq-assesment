@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knoviq-migrations
+  namespace: knoviq
+  labels:
+    app.kubernetes.io/name: knoviq-migrations
+    app.kubernetes.io/part-of: knoviq
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: knoviq-migrations
+        app.kubernetes.io/part-of: knoviq
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrations
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: knoviq-secrets
+                  key: DATABASE_URL
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              for file in /migrations/*.sql; do
+                echo "Applying ${file}"
+                psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${file}"
+              done
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 70
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: migrations
+          configMap:
+            name: knoviq-migrations

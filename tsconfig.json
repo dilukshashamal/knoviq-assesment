@@ -1,0 +1,18 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/cache" },
+    { "path": "./packages/events" },
+    { "path": "./packages/logger" },
+    { "path": "./packages/database" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/auth" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/observability" },
+    { "path": "./apps/auth-service" },
+    { "path": "./apps/ai-gateway" },
+    { "path": "./apps/knowledge-service" },
+    { "path": "./apps/tool-execution-service" }
+  ]
+}

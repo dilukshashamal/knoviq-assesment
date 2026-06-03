@@ -1,0 +1,33 @@
+{
+  "name": "@knoviq/tool-execution-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "tsc -b --clean",
+    "dev": "tsx watch src/server.ts",
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "test": "node -e \"console.log('No tests yet for tool-execution-service')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@knoviq/ai": "workspace:*",
+    "@knoviq/auth": "workspace:*",
+    "@knoviq/config": "workspace:*",
+    "@knoviq/contracts": "workspace:*",
+    "@knoviq/database": "workspace:*",
+    "@knoviq/events": "workspace:*",
+    "@knoviq/logger": "workspace:*",
+    "@knoviq/observability": "workspace:*",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.4.0",
+    "jose": "^6.2.3",
+    "openai": "^6.41.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4"
+  }
+}
