@@ -60,12 +60,12 @@ Upload (PDF or TXT)
 
 ### Configuration
 
-| Variable | Default | Effect |
-|---|---|---|
-| `KNOWLEDGE_CHUNK_TARGET_CHARS` | `1800` | Target characters per chunk |
-| `KNOWLEDGE_CHUNK_OVERLAP_CHARS` | `250` | Sentence overlap between consecutive chunks |
-| `KNOWLEDGE_EMBEDDING_PROVIDER` | `azure` | `azure` for production, `local` for dev smoke tests |
-| `KNOWLEDGE_MAX_FILE_BYTES` | `10485760` | 10 MB upload limit |
+| Variable                        | Default    | Effect                                              |
+| ------------------------------- | ---------- | --------------------------------------------------- |
+| `KNOWLEDGE_CHUNK_TARGET_CHARS`  | `1800`     | Target characters per chunk                         |
+| `KNOWLEDGE_CHUNK_OVERLAP_CHARS` | `250`      | Sentence overlap between consecutive chunks         |
+| `KNOWLEDGE_EMBEDDING_PROVIDER`  | `azure`    | `azure` for production, `local` for dev smoke tests |
+| `KNOWLEDGE_MAX_FILE_BYTES`      | `10485760` | 10 MB upload limit                                  |
 
 ---
 
@@ -122,13 +122,13 @@ Bi-encoder embeddings encode query and document independently. An LLM jointly at
 
 ### Configuration
 
-| Variable | Default | Effect |
-|---|---|---|
-| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2` | Minimum cosine similarity for vector arm |
-| `KNOWLEDGE_SEARCH_LIMIT` | `5` | Final chunks returned to the agent |
-| `KNOWLEDGE_RERANK_CANDIDATES` | `20` | Candidate pool fed into LLM reranker |
-| `KNOWLEDGE_RERANK_ENABLED` | `true` | Set `false` to skip reranking (faster, less precise) |
-| `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS` | `60` | Redis cache TTL for search results |
+| Variable                             | Default | Effect                                               |
+| ------------------------------------ | ------- | ---------------------------------------------------- |
+| `KNOWLEDGE_SEARCH_MIN_SIMILARITY`    | `0.2`   | Minimum cosine similarity for vector arm             |
+| `KNOWLEDGE_SEARCH_LIMIT`             | `5`     | Final chunks returned to the agent                   |
+| `KNOWLEDGE_RERANK_CANDIDATES`        | `20`    | Candidate pool fed into LLM reranker                 |
+| `KNOWLEDGE_RERANK_ENABLED`           | `true`  | Set `false` to skip reranking (faster, less precise) |
+| `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS` | `60`    | Redis cache TTL for search results                   |
 
 ---
 

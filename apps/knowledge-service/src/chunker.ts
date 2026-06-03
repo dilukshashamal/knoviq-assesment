@@ -102,10 +102,7 @@ export function sha256Hex(input: Buffer | string): string {
  * section always begins with its own heading (improves embedding quality).
  */
 function splitStructural(text: string): string[] {
-  const normalized = text
-    .replaceAll("\r\n", "\n")
-    .replaceAll("\r", "\n")
-    .replaceAll("\0", "");
+  const normalized = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").replaceAll("\0", "");
 
   const lines = normalized.split("\n");
   const sections: string[] = [];
@@ -254,11 +251,67 @@ function splitByWords(text: string, approxChars: number): string[] {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const STOP_WORDS = new Set([
-  "a","an","and","are","as","at","be","been","being","by","do","does","for",
-  "from","had","has","have","he","her","his","how","i","if","in","is","it",
-  "its","me","my","no","not","of","on","or","our","s","she","so","that","the",
-  "their","them","then","there","these","they","this","to","us","was","we",
-  "were","what","when","where","which","who","will","with","you","your",
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "been",
+  "being",
+  "by",
+  "do",
+  "does",
+  "for",
+  "from",
+  "had",
+  "has",
+  "have",
+  "he",
+  "her",
+  "his",
+  "how",
+  "i",
+  "if",
+  "in",
+  "is",
+  "it",
+  "its",
+  "me",
+  "my",
+  "no",
+  "not",
+  "of",
+  "on",
+  "or",
+  "our",
+  "s",
+  "she",
+  "so",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "to",
+  "us",
+  "was",
+  "we",
+  "were",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "will",
+  "with",
+  "you",
+  "your",
 ]);
 
 /**

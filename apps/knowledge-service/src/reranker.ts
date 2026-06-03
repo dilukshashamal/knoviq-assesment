@@ -62,11 +62,7 @@ export function createReranker(settings: KnowledgeSettings): Reranker {
 
 /** No-op reranker: returns candidates in their original RRF order */
 class PassthroughReranker implements Reranker {
-  async rerank(
-    _query: string,
-    candidates: SearchResult[],
-    topK: number,
-  ): Promise<SearchResult[]> {
+  async rerank(_query: string, candidates: SearchResult[], topK: number): Promise<SearchResult[]> {
     return candidates.slice(0, topK);
   }
 }
@@ -105,11 +101,11 @@ class LlmReranker implements Reranker {
           {
             role: "system",
             content: [
-              'You are a relevance scoring engine. Given a user query and a list of document chunks, score each chunk 0-10 for relevance to the query.',
-              '0 = completely irrelevant, 10 = directly and fully answers the query.',
+              "You are a relevance scoring engine. Given a user query and a list of document chunks, score each chunk 0-10 for relevance to the query.",
+              "0 = completely irrelevant, 10 = directly and fully answers the query.",
               'Return ONLY strict JSON: {"rankings":[{"chunkId":"...","relevance":0-10},...]}',
-              'Score ALL chunks. Do not add explanations.',
-            ].join('\n'),
+              "Score ALL chunks. Do not add explanations.",
+            ].join("\n"),
           },
           {
             role: "user",
@@ -128,9 +124,7 @@ class LlmReranker implements Reranker {
       const parsed = RerankResponseSchema.parse(JSON.parse(content));
 
       // Build a score map
-      const scoreMap = new Map(
-        parsed.rankings.map((r) => [r.chunkId, r.relevance]),
-      );
+      const scoreMap = new Map(parsed.rankings.map((r) => [r.chunkId, r.relevance]));
 
       // Sort candidates by LLM relevance score descending, then RRF score as tiebreak
       const reranked = [...candidates].sort((a, b) => {

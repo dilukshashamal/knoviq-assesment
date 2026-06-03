@@ -1,24 +1,24 @@
 # Services Reference
 
-## Auth Service  ·  port 4001
+## Auth Service · port 4001
 
 Owns user registration, authentication, JWT issuance, refresh token rotation, and tenant/RBAC management.
 
 ### Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/auth/register` | Create user + tenant, returns access and refresh tokens |
-| `POST` | `/auth/login` | Login with email + password, returns tokens |
-| `POST` | `/auth/refresh` | Rotate refresh token, return new access token |
-| `POST` | `/auth/logout` | Revoke refresh token |
-| `GET` | `/auth/me` | Current user profile |
-| `GET` | `/tenants` | List tenants the user belongs to |
-| `GET` | `/tenants/current/members` | List members of the active tenant |
-| `POST` | `/tenants/current/members` | Add an existing user to the tenant |
-| `PATCH` | `/tenants/current/members/:userId` | Change a member's role |
-| `DELETE` | `/tenants/current/members/:userId` | Remove a member |
-| `GET` | `/health` | Health check |
+| Method   | Path                               | Description                                             |
+| -------- | ---------------------------------- | ------------------------------------------------------- |
+| `POST`   | `/auth/register`                   | Create user + tenant, returns access and refresh tokens |
+| `POST`   | `/auth/login`                      | Login with email + password, returns tokens             |
+| `POST`   | `/auth/refresh`                    | Rotate refresh token, return new access token           |
+| `POST`   | `/auth/logout`                     | Revoke refresh token                                    |
+| `GET`    | `/auth/me`                         | Current user profile                                    |
+| `GET`    | `/tenants`                         | List tenants the user belongs to                        |
+| `GET`    | `/tenants/current/members`         | List members of the active tenant                       |
+| `POST`   | `/tenants/current/members`         | Add an existing user to the tenant                      |
+| `PATCH`  | `/tenants/current/members/:userId` | Change a member's role                                  |
+| `DELETE` | `/tenants/current/members/:userId` | Remove a member                                         |
+| `GET`    | `/health`                          | Health check                                            |
 
 ### Security model
 
@@ -32,27 +32,27 @@ Refresh rotation revokes the previous token on use, limiting replay value if a t
 
 Role hierarchy (highest to lowest): `owner` → `admin` → `member` → `viewer`.
 
-| Action | Required role |
-|---|---|
-| List members | `admin` or `owner` |
-| Add member as viewer/member/admin | `admin` or `owner` |
-| Add/remove/promote/demote owner | `owner` only |
-| Remove last owner | Blocked — always prevented |
+| Action                            | Required role              |
+| --------------------------------- | -------------------------- |
+| List members                      | `admin` or `owner`         |
+| Add member as viewer/member/admin | `admin` or `owner`         |
+| Add/remove/promote/demote owner   | `owner` only               |
+| Remove last owner                 | Blocked — always prevented |
 
 ---
 
-## AI Gateway  ·  port 4002
+## AI Gateway · port 4002
 
 Owns chat orchestration, conversation memory, multi-agent workflow, tool calling, streaming, and answer validation.
 
 ### Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/chat` | Synchronous chat — returns full response |
-| `POST` | `/chat/stream` | Server-Sent Events streaming |
-| `GET` | `/chat/ws` | WebSocket bidirectional streaming |
-| `GET` | `/health` | Health check |
+| Method | Path           | Description                              |
+| ------ | -------------- | ---------------------------------------- |
+| `POST` | `/chat`        | Synchronous chat — returns full response |
+| `POST` | `/chat/stream` | Server-Sent Events streaming             |
+| `GET`  | `/chat/ws`     | WebSocket bidirectional streaming        |
+| `GET`  | `/health`      | Health check                             |
 
 ### Agent workflow
 
@@ -67,16 +67,16 @@ Each chat turn runs four phases:
 
 All three transport options (HTTP, SSE, WebSocket) emit the same structured events:
 
-| Event type | Payload |
-|---|---|
-| `conversation` | `{ conversationId }` |
-| `agent_step` | `{ agent, status, toolCallCount? }` |
-| `message` | `{ messageId, role }` |
-| `tool_start` | `{ toolName, arguments, reason }` |
-| `tool_result` | Tool execution result |
-| `validation` | `{ status, confidence, issues }` |
-| `final` | Full `AgentRunResult` |
-| `error` | `{ message }` |
+| Event type     | Payload                             |
+| -------------- | ----------------------------------- |
+| `conversation` | `{ conversationId }`                |
+| `agent_step`   | `{ agent, status, toolCallCount? }` |
+| `message`      | `{ messageId, role }`               |
+| `tool_start`   | `{ toolName, arguments, reason }`   |
+| `tool_result`  | Tool execution result               |
+| `validation`   | `{ status, confidence, issues }`    |
+| `final`        | Full `AgentRunResult`               |
+| `error`        | `{ message }`                       |
 
 ### WebSocket auth
 
@@ -86,63 +86,64 @@ Query param (for runtimes that don't support auth headers on WS): `?accessToken=
 
 ### Model providers
 
-| Variable | Value | Behaviour |
-|---|---|---|
-| `AI_GATEWAY_MODEL_PROVIDER` | `azure` | Production — uses Azure OpenAI |
+| Variable                    | Value   | Behaviour                                                            |
+| --------------------------- | ------- | -------------------------------------------------------------------- |
+| `AI_GATEWAY_MODEL_PROVIDER` | `azure` | Production — uses Azure OpenAI                                       |
 | `AI_GATEWAY_MODEL_PROVIDER` | `local` | Development — deterministic responses, no Azure credentials required |
 
 ---
 
-## Knowledge Service  ·  port 4003
+## Knowledge Service · port 4003
 
 Owns document ingestion, text extraction, hybrid chunking, embedding generation, and hybrid semantic + keyword search.
 
 ### Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/documents` | Upload PDF or TXT (`multipart/form-data`) |
-| `GET` | `/documents` | List documents for the authenticated tenant |
-| `DELETE` | `/documents/:id` | Delete document and all its chunks |
-| `POST` | `/search` | Hybrid BM25 + vector search with LLM reranking |
-| `GET` | `/health` | Health check |
+| Method   | Path             | Description                                    |
+| -------- | ---------------- | ---------------------------------------------- |
+| `POST`   | `/documents`     | Upload PDF or TXT (`multipart/form-data`)      |
+| `GET`    | `/documents`     | List documents for the authenticated tenant    |
+| `DELETE` | `/documents/:id` | Delete document and all its chunks             |
+| `POST`   | `/search`        | Hybrid BM25 + vector search with LLM reranking |
+| `GET`    | `/health`        | Health check                                   |
 
 ### Upload fields
 
-| Field | Required | Description |
-|---|---|---|
-| `file` | Yes | PDF or TXT file |
-| `title` | No | Display title (defaults to filename) |
-| `visibility` | No | `private`, `tenant`, or `shared` |
-| `metadata` | No | JSON object with custom fields |
+| Field        | Required | Description                          |
+| ------------ | -------- | ------------------------------------ |
+| `file`       | Yes      | PDF or TXT file                      |
+| `title`      | No       | Display title (defaults to filename) |
+| `visibility` | No       | `private`, `tenant`, or `shared`     |
+| `metadata`   | No       | JSON object with custom fields       |
 
 ### Document access
 
 All queries filter by authenticated tenant, active membership, and one of:
+
 - document owner
 - document visibility = `tenant`
 - explicit `document_access_grants` row for the user
 
 ### Embedding providers
 
-| Variable | Value | Behaviour |
-|---|---|---|
-| `KNOWLEDGE_EMBEDDING_PROVIDER` | `azure` | Production — Azure `text-embedding-3-small` |
+| Variable                       | Value   | Behaviour                                         |
+| ------------------------------ | ------- | ------------------------------------------------- |
+| `KNOWLEDGE_EMBEDDING_PROVIDER` | `azure` | Production — Azure `text-embedding-3-small`       |
 | `KNOWLEDGE_EMBEDDING_PROVIDER` | `local` | Development — deterministic SHA-256-based vectors |
 
 ---
 
-## Tool Execution Service  ·  port 4004
+## Tool Execution Service · port 4004
 
 Owns safe tool execution and execution logging. All tools are validated, parameterised, and tenant-aware.
 
 ### Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/tools` | Return tool definitions for the AI Gateway planner |
-| `POST` | `/tools/execute` | Execute a named tool with validated arguments |
-| `GET` | `/health` | Health check |
+| Method | Path             | Description                                        |
+| ------ | ---------------- | -------------------------------------------------- |
+| `GET`  | `/tools`         | Return tool definitions for the AI Gateway planner |
+| `POST` | `/tools/execute` | Execute a named tool with validated arguments      |
+| `GET`  | `/health`        | Health check                                       |
 
 ### Tools
 

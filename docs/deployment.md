@@ -65,16 +65,16 @@ Base manifests live at `infra/k8s/base`.
 
 ### Included resources
 
-| Resource | Description |
-|---|---|
-| `namespace.yaml` | `knoviq` namespace |
-| `configmap.yaml` | Non-secret environment configuration |
-| `secret.example.yaml` | Template for required secrets (fill before applying) |
-| `postgres/` | PostgreSQL StatefulSet + Service |
-| `redis/` | Redis Deployment + Service |
-| `migrations/` | One-shot migration Job |
-| `*/deployment.yaml` | Deployment + Service for each backend |
-| `knowledge-service/pvc.yaml` | PersistentVolumeClaim for document uploads |
+| Resource                     | Description                                          |
+| ---------------------------- | ---------------------------------------------------- |
+| `namespace.yaml`             | `knoviq` namespace                                   |
+| `configmap.yaml`             | Non-secret environment configuration                 |
+| `secret.example.yaml`        | Template for required secrets (fill before applying) |
+| `postgres/`                  | PostgreSQL StatefulSet + Service                     |
+| `redis/`                     | Redis Deployment + Service                           |
+| `migrations/`                | One-shot migration Job                               |
+| `*/deployment.yaml`          | Deployment + Service for each backend                |
+| `knowledge-service/pvc.yaml` | PersistentVolumeClaim for document uploads           |
 
 ### Apply
 
@@ -121,11 +121,11 @@ Auth Service and Web are stateless and scale horizontally with no additional con
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`.
 
-| Job | Steps |
-|---|---|
-| `quality` | Install → format check → build → lint → typecheck |
-| `docker` | Buildx `--check` for all four backend Dockerfiles |
-| `manifests` | `kubectl kustomize infra/k8s/base` render check |
+| Job         | Steps                                             |
+| ----------- | ------------------------------------------------- |
+| `quality`   | Install → format check → build → lint → typecheck |
+| `docker`    | Buildx `--check` for all four backend Dockerfiles |
+| `manifests` | `kubectl kustomize infra/k8s/base` render check   |
 
 ### Container Publishing
 

@@ -784,8 +784,7 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
       <div className="empty-state">
         <Receipt className="h-5 w-5" />
         <span>
-          No invoices found{period ? ` for ${period}` : ""}. Upload an invoice file and ask
-          again.
+          No invoices found{period ? ` for ${period}` : ""}. Upload an invoice file and ask again.
         </span>
       </div>
     );
@@ -812,7 +811,6 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-background">
-
       {/* ── Header ── */}
       <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
         <div className="flex items-center gap-2">
@@ -841,10 +839,7 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
 
           {/* Rows */}
           {lineItems.map((inv, i) => (
-            <div
-              key={inv.invoiceNumber ?? i}
-              className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3"
-            >
+            <div key={inv.invoiceNumber ?? i} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
               <div className="min-w-0">
                 {/* Invoice number + vendor */}
                 <div className="flex flex-wrap items-baseline gap-x-2">
@@ -866,9 +861,7 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
                     </span>
                   ) : null}
                   {inv.description ? (
-                    <span className="text-xs text-muted-foreground">
-                      · {inv.description}
-                    </span>
+                    <span className="text-xs text-muted-foreground">· {inv.description}</span>
                   ) : (inv as InvoiceItem & { category?: string }).category ? (
                     <span className="text-xs text-muted-foreground">
                       · {(inv as InvoiceItem & { category?: string }).category}
@@ -884,8 +877,7 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
                           : "text-success"
                       }`}
                     >
-                      ·{" "}
-                      {(inv as InvoiceItem & { approvalStatus?: string }).approvalStatus}
+                      · {(inv as InvoiceItem & { approvalStatus?: string }).approvalStatus}
                     </span>
                   ) : null}
                 </div>
@@ -946,7 +938,6 @@ function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall
           </p>
         </div>
       ) : null}
-
     </div>
   );
 }
@@ -970,27 +961,27 @@ function parseInvoiceOutput(data: unknown): InvoiceExtractionOutput | null {
       amount: typeof inv.amount === "number" ? inv.amount : 0,
     };
     if (typeof inv.approvalStatus === "string") base.approvalStatus = inv.approvalStatus;
-    if (typeof inv.category     === "string") base.category      = inv.category;
-    if (typeof inv.chunkId      === "string") base.chunkId       = inv.chunkId;
-    if (typeof inv.department   === "string") base.department    = inv.department;
-    if (typeof inv.description  === "string") base.description   = inv.description;
-    if (typeof inv.documentId   === "string") base.documentId    = inv.documentId;
-    if (typeof inv.documentTitle=== "string") base.documentTitle = inv.documentTitle;
-    if (typeof inv.evidence     === "string") base.evidence      = inv.evidence;
-    if (typeof inv.invoiceDate  === "string") base.invoiceDate   = inv.invoiceDate;
-    if (typeof inv.invoiceNumber=== "string") base.invoiceNumber = inv.invoiceNumber;
-    if (typeof inv.vendor       === "string") base.vendor        = inv.vendor;
+    if (typeof inv.category === "string") base.category = inv.category;
+    if (typeof inv.chunkId === "string") base.chunkId = inv.chunkId;
+    if (typeof inv.department === "string") base.department = inv.department;
+    if (typeof inv.description === "string") base.description = inv.description;
+    if (typeof inv.documentId === "string") base.documentId = inv.documentId;
+    if (typeof inv.documentTitle === "string") base.documentTitle = inv.documentTitle;
+    if (typeof inv.evidence === "string") base.evidence = inv.evidence;
+    if (typeof inv.invoiceDate === "string") base.invoiceDate = inv.invoiceDate;
+    if (typeof inv.invoiceNumber === "string") base.invoiceNumber = inv.invoiceNumber;
+    if (typeof inv.vendor === "string") base.vendor = inv.vendor;
     return base;
   });
 
   const result: InvoiceExtractionOutput = {
-    currency:     d.currency,
+    currency: d.currency,
     invoiceCount: d.invoiceCount,
     invoices,
-    period:       typeof d.period === "string" ? d.period : null,
-    totalAmount:  d.totalAmount,
+    period: typeof d.period === "string" ? d.period : null,
+    totalAmount: d.totalAmount,
   };
-  if (typeof d.expression     === "string") result.expression     = d.expression;
+  if (typeof d.expression === "string") result.expression = d.expression;
   if (typeof d.skippedChunkCount === "number") result.skippedChunkCount = d.skippedChunkCount;
 
   return result;

@@ -16,13 +16,13 @@ Registration creates three records atomically:
 
 The issued access token contains:
 
-| Claim | Value |
-|---|---|
-| `sub` | User ID |
-| `tenant_id` | Active tenant ID |
-| `role` | Active tenant role |
-| `email` | User email |
-| `jti` | Unique token ID (for revocation) |
+| Claim       | Value                            |
+| ----------- | -------------------------------- |
+| `sub`       | User ID                          |
+| `tenant_id` | Active tenant ID                 |
+| `role`      | Active tenant role               |
+| `email`     | User email                       |
+| `jti`       | Unique token ID (for revocation) |
 
 Users can belong to multiple tenants. `POST /auth/login` accepts a `tenantSlug` field to request a token for a specific workspace. Without it, the user's primary tenant is used.
 
@@ -32,14 +32,14 @@ Users can belong to multiple tenants. `POST /auth/login` accepts a `tenantSlug` 
 owner  >  admin  >  member  >  viewer
 ```
 
-| Action | Minimum role |
-|---|---|
-| Ask questions, view answers | `viewer` |
-| Upload documents | `contributor` (maps to `member`) |
-| Run SQL reporting tools | `manager` (maps to `admin`) |
-| Manage tenant members (non-owner) | `admin` |
-| Manage owner memberships | `owner` |
-| View audit reports | `admin` |
+| Action                            | Minimum role                     |
+| --------------------------------- | -------------------------------- |
+| Ask questions, view answers       | `viewer`                         |
+| Upload documents                  | `contributor` (maps to `member`) |
+| Run SQL reporting tools           | `manager` (maps to `admin`)      |
+| Manage tenant members (non-owner) | `admin`                          |
+| Manage owner memberships          | `owner`                          |
+| View audit reports                | `admin`                          |
 
 One owner must always remain. The system rejects any operation that would remove the last owner of a tenant.
 
@@ -64,11 +64,11 @@ This keeps tenant context explicit at every service boundary and prevents cross-
 
 Documents can have three visibility levels:
 
-| Visibility | Who can access |
-|---|---|
-| `private` | Owner only |
-| `tenant` | All active members of the tenant |
-| `shared` | Owner + explicit `document_access_grants` rows |
+| Visibility | Who can access                                 |
+| ---------- | ---------------------------------------------- |
+| `private`  | Owner only                                     |
+| `tenant`   | All active members of the tenant               |
+| `shared`   | Owner + explicit `document_access_grants` rows |
 
 Search results and document lists always apply this filter before returning data.
 

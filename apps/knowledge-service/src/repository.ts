@@ -613,13 +613,7 @@ export class KnowledgeRepository {
           ORDER BY score DESC
           LIMIT $5
         `,
-        [
-          input.queryText,
-          input.tenantId,
-          input.userId,
-          input.documentIds ?? null,
-          candidateLimit,
-        ],
+        [input.queryText, input.tenantId, input.userId, input.documentIds ?? null, candidateLimit],
       );
       keywordRows = kwResult.rows;
     } catch {
@@ -667,7 +661,7 @@ export class KnowledgeRepository {
       };
 
       if (row.source_page_start !== null) output.sourcePageStart = row.source_page_start;
-      if (row.source_page_end !== null)   output.sourcePageEnd   = row.source_page_end;
+      if (row.source_page_end !== null) output.sourcePageEnd = row.source_page_end;
 
       return output;
     });

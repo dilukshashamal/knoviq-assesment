@@ -257,7 +257,7 @@ export class AgentRunner {
           tc.toolName === "knowledge.retrieve" &&
           tc.status === "succeeded" &&
           Array.isArray((tc.output as { results?: unknown[] } | undefined)?.results) &&
-          ((tc.output as { results: unknown[] }).results.length > 0),
+          (tc.output as { results: unknown[] }).results.length > 0,
       ),
     });
     const assistantMessageId = await this.repository.addMessage({
@@ -554,9 +554,7 @@ function shouldRequireGroundedEvidence(
   // Require grounding only when the agent actually attempted to retrieve evidence.
   // Do NOT require it based on message keywords alone — that causes the guardrail
   // to fire when zero tools ran (e.g. planner returned empty), blocking valid answers.
-  const knowledgeWasAttempted = toolCalls.some(
-    (tc) => tc.toolName === "knowledge.retrieve",
-  );
+  const knowledgeWasAttempted = toolCalls.some((tc) => tc.toolName === "knowledge.retrieve");
 
   if (knowledgeWasAttempted) {
     return true;

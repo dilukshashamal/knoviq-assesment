@@ -8,23 +8,23 @@ All application data lives in a single PostgreSQL database under the `knoviq` sc
 
 **Schema tables**
 
-| Table | Owner service | Purpose |
-|---|---|---|
-| `tenants` | Auth | Tenant identity and status |
-| `users` | Auth | User accounts with Argon2id password hashes |
-| `tenant_memberships` | Auth | Role-based tenant membership |
-| `refresh_tokens` | Auth | HMAC-SHA256 hashed opaque tokens |
-| `audit_logs` | Auth | Security-sensitive event log |
-| `documents` | Knowledge | Document metadata and ingest status |
-| `document_access_grants` | Knowledge | Per-user document sharing |
-| `document_chunks` | Knowledge | Chunk content + `embedding::vector(1536)` |
-| `embedding_cache` | Knowledge | Content-hash → vector deduplication cache |
-| `conversations` | AI Gateway | Conversation sessions |
-| `messages` | AI Gateway | User and assistant messages |
-| `message_citations` | AI Gateway | Chunk citations per assistant message |
-| `llm_usage` | AI Gateway | Token counts, latency, estimated cost |
-| `tool_executions` | Tool Execution | Per-execution input, output, status, latency |
-| `service_metrics` | All services | Request counters and latency histograms |
+| Table                    | Owner service  | Purpose                                      |
+| ------------------------ | -------------- | -------------------------------------------- |
+| `tenants`                | Auth           | Tenant identity and status                   |
+| `users`                  | Auth           | User accounts with Argon2id password hashes  |
+| `tenant_memberships`     | Auth           | Role-based tenant membership                 |
+| `refresh_tokens`         | Auth           | HMAC-SHA256 hashed opaque tokens             |
+| `audit_logs`             | Auth           | Security-sensitive event log                 |
+| `documents`              | Knowledge      | Document metadata and ingest status          |
+| `document_access_grants` | Knowledge      | Per-user document sharing                    |
+| `document_chunks`        | Knowledge      | Chunk content + `embedding::vector(1536)`    |
+| `embedding_cache`        | Knowledge      | Content-hash → vector deduplication cache    |
+| `conversations`          | AI Gateway     | Conversation sessions                        |
+| `messages`               | AI Gateway     | User and assistant messages                  |
+| `message_citations`      | AI Gateway     | Chunk citations per assistant message        |
+| `llm_usage`              | AI Gateway     | Token counts, latency, estimated cost        |
+| `tool_executions`        | Tool Execution | Per-execution input, output, status, latency |
+| `service_metrics`        | All services   | Request counters and latency histograms      |
 
 **Vector index**
 
@@ -46,10 +46,10 @@ Redis is a **cache only** — never the source of truth. On Redis failure or una
 
 **What is cached**
 
-| Cache | Key scope | TTL |
-|---|---|---|
-| Knowledge search results | `(tenantId, userId, query, filters)` hash | 60s |
-| Tool definitions | Tool service URL | 300s |
+| Cache                    | Key scope                                 | TTL  |
+| ------------------------ | ----------------------------------------- | ---- |
+| Knowledge search results | `(tenantId, userId, query, filters)` hash | 60s  |
+| Tool definitions         | Tool service URL                          | 300s |
 
 **Configuration**
 
@@ -74,13 +74,13 @@ Kafka receives domain events **after** PostgreSQL writes succeed. Kafka availabi
 
 **Topics**
 
-| Topic | Events |
-|---|---|
-| `knoviq.documents` | `knowledge.document.uploaded`, `knowledge.document.deleted` |
-| `knoviq.conversations` | `conversation.created`, `conversation.message.created` |
-| `knoviq.agent-runs` | `agent.run.completed` |
-| `knoviq.llm-usage` | `llm.usage.recorded` |
-| `knoviq.tool-executions` | `tool.execution.completed` |
+| Topic                    | Events                                                      |
+| ------------------------ | ----------------------------------------------------------- |
+| `knoviq.documents`       | `knowledge.document.uploaded`, `knowledge.document.deleted` |
+| `knoviq.conversations`   | `conversation.created`, `conversation.message.created`      |
+| `knoviq.agent-runs`      | `agent.run.completed`                                       |
+| `knoviq.llm-usage`       | `llm.usage.recorded`                                        |
+| `knoviq.tool-executions` | `tool.execution.completed`                                  |
 
 **Event envelope**
 
@@ -148,16 +148,16 @@ The `sql.query_safe` operation `service_metric_summary` exposes these to the age
 
 Every LLM call writes a row to `knoviq.llm_usage`:
 
-| Field | Description |
-|---|---|
-| `purpose` | `tool_planning`, `answer_synthesis`, `validation`, `embedding` |
-| `provider` | `azure_openai` or `local` |
-| `model_deployment` | Deployment name from Azure |
-| `prompt_tokens` | Input token count |
-| `completion_tokens` | Output token count |
-| `latency_ms` | Round-trip time |
-| `estimated_cost_usd` | Calculated from cost-per-1k config |
-| `cached` | Whether the result came from embedding cache |
+| Field                | Description                                                    |
+| -------------------- | -------------------------------------------------------------- |
+| `purpose`            | `tool_planning`, `answer_synthesis`, `validation`, `embedding` |
+| `provider`           | `azure_openai` or `local`                                      |
+| `model_deployment`   | Deployment name from Azure                                     |
+| `prompt_tokens`      | Input token count                                              |
+| `completion_tokens`  | Output token count                                             |
+| `latency_ms`         | Round-trip time                                                |
+| `estimated_cost_usd` | Calculated from cost-per-1k config                             |
+| `cached`             | Whether the result came from embedding cache                   |
 
 Cost defaults are zero. Set them from the active deployment price sheet:
 

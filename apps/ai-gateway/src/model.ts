@@ -113,20 +113,20 @@ class AzureChatAgentModel implements AgentModel {
           role: "system",
           content: [
             'You are Knoviq\'s tool planner. Return strict JSON only: {"toolCalls":[{"toolName":"...","arguments":{},"reason":"..."}]}.',
-            '',
-            'TOOL PLANNING RULES (follow in order):',
+            "",
+            "TOOL PLANNING RULES (follow in order):",
             '1. ALWAYS call "knowledge.retrieve" for ANY factual, informational, policy, procedure, or "who/what/when/how/why" question — even if it seems general. The knowledge base is the primary source of truth.',
-            '   Examples that MUST trigger knowledge.retrieve:',
+            "   Examples that MUST trigger knowledge.retrieve:",
             '   - "who can upload documents?" → retrieve with query "who can upload documents"',
             '   - "what is the retention policy?" → retrieve with query "retention policy"',
             '   - "In AtlasIQ who can do X?" → retrieve with query "AtlasIQ who can do X"',
             '   - "summarize the policy" → retrieve with query "policy summary"',
-            '2. Only SKIP knowledge.retrieve for pure greetings (hi, hello, thanks) or pure arithmetic.',
+            "2. Only SKIP knowledge.retrieve for pure greetings (hi, hello, thanks) or pure arithmetic.",
             '3. For knowledge retrieval, set "query" to the user\'s question reworded as a keyword search phrase.',
             '4. Use "calculator.evaluate" only when the user provides or requests numeric arithmetic.',
             '5. Use "sql.query_safe" only when the user requests platform usage metrics, document counts, or reports.',
-            '6. Never invent tool names. Only use tools from the provided list.',
-          ].join('\n'),
+            "6. Never invent tool names. Only use tools from the provided list.",
+          ].join("\n"),
         },
         {
           role: "user",
@@ -205,7 +205,16 @@ class AzureChatAgentModel implements AgentModel {
             retrievedChunks: input.toolCalls
               .filter((tc) => tc.toolName === "knowledge.retrieve" && tc.status === "succeeded")
               .flatMap((tc) => {
-                const out = tc.output as { results?: Array<{ chunkContent: string; documentTitle: string; chunkId: string; score?: number }> } | undefined;
+                const out = tc.output as
+                  | {
+                      results?: Array<{
+                        chunkContent: string;
+                        documentTitle: string;
+                        chunkId: string;
+                        score?: number;
+                      }>;
+                    }
+                  | undefined;
                 return (
                   out?.results?.map((r, i) => ({
                     index: i + 1,
@@ -232,8 +241,7 @@ class AzureChatAgentModel implements AgentModel {
     });
 
     return {
-      answer:
-        response.choices.at(0)?.message.content?.trim() || "I could not generate a response.",
+      answer: response.choices.at(0)?.message.content?.trim() || "I could not generate a response.",
       usage: {
         completionTokens: response.usage?.completion_tokens ?? 0,
         latencyMs: timer.stop(),
@@ -256,8 +264,12 @@ class AzureChatAgentModel implements AgentModel {
     const knowledgeChunks = input.toolCalls
       .filter((tc) => tc.toolName === "knowledge.retrieve" && tc.status === "succeeded")
       .flatMap((tc) => {
-        const out = tc.output as { results?: Array<{ chunkContent: string; documentTitle: string }> } | undefined;
-        return out?.results?.map((r) => `[${r.documentTitle}]: ${r.chunkContent.slice(0, 600)}`) ?? [];
+        const out = tc.output as
+          | { results?: Array<{ chunkContent: string; documentTitle: string }> }
+          | undefined;
+        return (
+          out?.results?.map((r) => `[${r.documentTitle}]: ${r.chunkContent.slice(0, 600)}`) ?? []
+        );
       });
 
     const response = await this.client.chat.completions.create({
@@ -265,21 +277,21 @@ class AzureChatAgentModel implements AgentModel {
         {
           role: "system",
           content: [
-            'You are Knoviq\'s answer validator and knowledge-base guardrail.',
-            'Return STRICT JSON only:',
+            "You are Knoviq's answer validator and knowledge-base guardrail.",
+            "Return STRICT JSON only:",
             '{"status":"grounded|partially_grounded|unsupported","confidence":0-1,"issues":[],"requiredCaveats":[],"supportedToolNames":[]}',
-            '',
-            'VALIDATION RULES:',
-            '1. GROUNDED: Every factual claim in the answer appears verbatim or by paraphrase in the provided tool outputs.',
-            '2. PARTIALLY_GROUNDED: Most claims are grounded but some are inferred or generalised.',
-            '3. UNSUPPORTED: The answer contains claims NOT present in tool outputs, OR tool outputs were empty/missing when requiresGroundedEvidence=true.',
-            '',
-            'KNOWLEDGE-BASE BOUNDARY RULE (critical):',
+            "",
+            "VALIDATION RULES:",
+            "1. GROUNDED: Every factual claim in the answer appears verbatim or by paraphrase in the provided tool outputs.",
+            "2. PARTIALLY_GROUNDED: Most claims are grounded but some are inferred or generalised.",
+            "3. UNSUPPORTED: The answer contains claims NOT present in tool outputs, OR tool outputs were empty/missing when requiresGroundedEvidence=true.",
+            "",
+            "KNOWLEDGE-BASE BOUNDARY RULE (critical):",
             'If requiresGroundedEvidence=true AND the answer contains information that is NOT present in the retrieved chunks listed below, mark status as "unsupported".',
-            'The assistant must NEVER answer from general LLM knowledge when the question is about uploaded documents.',
-            '',
+            "The assistant must NEVER answer from general LLM knowledge when the question is about uploaded documents.",
+            "",
             'If requiresGroundedEvidence=false, allow general knowledge answers and mark as "grounded" if the answer is factually sound.',
-          ].join('\n'),
+          ].join("\n"),
         },
         {
           role: "user",
@@ -624,7 +636,9 @@ function summarizeKnowledgeOutput(output: unknown): string {
   for (const [index, result] of parsed.data.results.entries()) {
     lines.push(`**[${index + 1}] ${result.documentTitle}**`);
     lines.push(result.chunkContent.trim());
-    lines.push(`_Source: chunk ${result.chunkId.slice(0, 8)}${result.score !== undefined ? `, relevance ${(result.score * 100).toFixed(0)}%` : ""}_`);
+    lines.push(
+      `_Source: chunk ${result.chunkId.slice(0, 8)}${result.score !== undefined ? `, relevance ${(result.score * 100).toFixed(0)}%` : ""}_`,
+    );
     lines.push("");
   }
 

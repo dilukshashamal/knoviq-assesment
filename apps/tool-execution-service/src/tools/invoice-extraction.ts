@@ -32,18 +32,18 @@ import type { ToolExecutionContext, ToolHandler } from "../types.js";
 
 const LlmInvoiceSchema = z.object({
   invoiceNumber: z.string().optional(),
-  vendor:        z.string().optional(),
-  invoiceDate:   z.string().optional(),   // YYYY-MM-DD preferred
-  description:   z.string().optional(),   // what was bought / category
-  amount:        z.number().positive(),   // net payable for this invoice
-  currency:      z.string().default("USD"),
+  vendor: z.string().optional(),
+  invoiceDate: z.string().optional(), // YYYY-MM-DD preferred
+  description: z.string().optional(), // what was bought / category
+  amount: z.number().positive(), // net payable for this invoice
+  currency: z.string().default("USD"),
   approvalStatus: z.string().optional(), // "Approved", "Approved by manager", etc.
 });
 
 const LlmExtractionResponseSchema = z.object({
-  invoices:    z.array(LlmInvoiceSchema).max(50),
-  grandTotal:  z.number().nonnegative().optional(), // from document's own verified total line
-  periodLabel: z.string().optional(),              // what period the LLM detected
+  invoices: z.array(LlmInvoiceSchema).max(50),
+  grandTotal: z.number().nonnegative().optional(), // from document's own verified total line
+  periodLabel: z.string().optional(), // what period the LLM detected
 });
 
 type LlmInvoice = z.infer<typeof LlmInvoiceSchema>;
@@ -51,13 +51,13 @@ type LlmInvoice = z.infer<typeof LlmInvoiceSchema>;
 // ── ExtractedInvoice (returned in tool output) ────────────────────────────────
 
 interface ExtractedInvoice {
-  amount:          number;
+  amount: number;
   approvalStatus?: string;
-  currency:        string;
-  description?:    string;
-  invoiceDate?:    string;
-  invoiceNumber?:  string;
-  vendor?:         string;
+  currency: string;
+  description?: string;
+  invoiceDate?: string;
+  invoiceNumber?: string;
+  vendor?: string;
 }
 
 // ── Tool class ────────────────────────────────────────────────────────────────
@@ -82,9 +82,9 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
             additionalProperties: false,
             required: ["chunkContent"],
             properties: {
-              chunkContent:  { type: "string", maxLength: 20000 },
-              chunkId:       { type: "string", format: "uuid" },
-              documentId:    { type: "string", format: "uuid" },
+              chunkContent: { type: "string", maxLength: 20000 },
+              chunkId: { type: "string", format: "uuid" },
+              documentId: { type: "string", format: "uuid" },
               documentTitle: { type: "string", maxLength: 300 },
             },
           },
@@ -125,11 +125,11 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
           : (extractFallbackGrandTotal(documentText) ?? 0);
 
     return {
-      currency:         parsed.currency,
-      expression:       invoices.map((inv) => inv.amount).join(" + ") || "0",
-      invoiceCount:     invoices.length,
+      currency: parsed.currency,
+      expression: invoices.map((inv) => inv.amount).join(" + ") || "0",
+      invoiceCount: invoices.length,
       invoices,
-      period:           llmResult?.periodLabel ?? parsed.period ?? null,
+      period: llmResult?.periodLabel ?? parsed.period ?? null,
       skippedChunkCount: 0,
       totalAmount,
     };
@@ -152,11 +152,11 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
     }
 
     const client = new AzureOpenAI({
-      apiKey:     this.settings.azureOpenAiApiKey,
+      apiKey: this.settings.azureOpenAiApiKey,
       apiVersion: this.settings.azureOpenAiApiVersion,
-      endpoint:   this.settings.azureOpenAiEndpoint,
+      endpoint: this.settings.azureOpenAiEndpoint,
       maxRetries: 1,
-      timeout:    25_000,
+      timeout: 25_000,
     });
 
     const periodInstruction = period
@@ -169,9 +169,9 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
       periodInstruction,
       "",
       "Return STRICT JSON only — no markdown, no explanation:",
-      '{',
+      "{",
       '  "invoices": [',
-      '    {',
+      "    {",
       '      "invoiceNumber": "INV-001",        // optional — the invoice/reference number',
       '      "vendor": "Acme Corp",              // optional — who issued the invoice',
       '      "invoiceDate": "2026-04-15",        // optional — YYYY-MM-DD format',
@@ -179,11 +179,11 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
       '      "amount": 780.00,                  // REQUIRED — the final payable amount',
       '      "currency": "USD",                 // currency code',
       '      "approvalStatus": "Approved"       // optional — approval state if present',
-      '    }',
-      '  ],',
+      "    }",
+      "  ],",
       '  "grandTotal": 6837.50,   // optional — use ONLY if the document has an explicit verified total line',
       '  "periodLabel": "April 2026"  // optional — the period you detected from the document',
-      '}',
+      "}",
       "",
       "RULES:",
       "1. amount must be the FINAL payable amount per invoice — not a subtotal, tax line, or quantity.",
@@ -214,18 +214,20 @@ export class InvoiceExtractionTool implements ToolHandler<InvoiceExtractionArgum
       const parsed = LlmExtractionResponseSchema.parse(JSON.parse(raw));
 
       const invoices: ExtractedInvoice[] = parsed.invoices.map((inv: LlmInvoice) => ({
-        amount:          roundCurrency(inv.amount),
-        currency:        inv.currency ?? currency,
-        ...(inv.invoiceNumber  ? { invoiceNumber:  inv.invoiceNumber }  : {}),
-        ...(inv.vendor         ? { vendor:         inv.vendor }         : {}),
-        ...(inv.invoiceDate    ? { invoiceDate:    inv.invoiceDate }    : {}),
-        ...(inv.description    ? { description:    inv.description }    : {}),
+        amount: roundCurrency(inv.amount),
+        currency: inv.currency ?? currency,
+        ...(inv.invoiceNumber ? { invoiceNumber: inv.invoiceNumber } : {}),
+        ...(inv.vendor ? { vendor: inv.vendor } : {}),
+        ...(inv.invoiceDate ? { invoiceDate: inv.invoiceDate } : {}),
+        ...(inv.description ? { description: inv.description } : {}),
         ...(inv.approvalStatus ? { approvalStatus: inv.approvalStatus } : {}),
       }));
 
       return {
         invoices,
-        ...(parsed.grandTotal !== undefined ? { grandTotal: roundCurrency(parsed.grandTotal) } : {}),
+        ...(parsed.grandTotal !== undefined
+          ? { grandTotal: roundCurrency(parsed.grandTotal) }
+          : {}),
         ...(parsed.periodLabel !== undefined ? { periodLabel: parsed.periodLabel } : {}),
       };
     } catch {

@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+
 # Knoviq — Enterprise AI Knowledge Assistant Platform
 
 Knoviq is a production-ready, multi-tenant AI knowledge assistant built as a **microservices** platform. Five independent services handle authentication, AI orchestration, document knowledge management, tool execution, and the web frontend. Each runs as its own process, has its own Docker image, and scales independently.
@@ -31,14 +32,14 @@ The source code is organised as a **monorepo** (all services in one git reposito
 
 Each microservice satisfies the key microservice properties:
 
-| Property | How Knoviq implements it |
-|---|---|
-| **Independent deployment** | Each service has its own `Dockerfile` and `npm run start` script |
-| **Independent scaling** | `kubectl scale deployment ai-gateway --replicas=3` scales only that service |
-| **Own data ownership** | Each service has its own schema tables and connection pool |
-| **Communicate over network** | Services talk via HTTP (REST); never import each other's source code |
-| **Failure isolation** | If Tool Execution Service is down, Auth and Knowledge Service keep running |
-| **Technology independence** | Each service can adopt a different runtime, language, or DB in future |
+| Property                     | How Knoviq implements it                                                    |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| **Independent deployment**   | Each service has its own `Dockerfile` and `npm run start` script            |
+| **Independent scaling**      | `kubectl scale deployment ai-gateway --replicas=3` scales only that service |
+| **Own data ownership**       | Each service has its own schema tables and connection pool                  |
+| **Communicate over network** | Services talk via HTTP (REST); never import each other's source code        |
+| **Failure isolation**        | If Tool Execution Service is down, Auth and Knowledge Service keep running  |
+| **Technology independence**  | Each service can adopt a different runtime, language, or DB in future       |
 
 The shared packages (`@knoviq/cache`, `@knoviq/database`, etc.) are compiled libraries — like npm packages. They introduce zero runtime coupling: a shared package is a build-time dependency, not a shared process or shared memory.
 
@@ -139,12 +140,12 @@ docs/                     Architecture documentation
 
 ## 2. Prerequisites
 
-| Requirement | Version |
-|---|---|
-| Node.js | `≥ 20.9` (`22.x` recommended) |
-| pnpm (via Corepack) | `10.13.1` |
-| Docker Desktop / Engine | `≥ 24` |
-| Azure OpenAI resource | Required for production embeddings + chat |
+| Requirement             | Version                                   |
+| ----------------------- | ----------------------------------------- |
+| Node.js                 | `≥ 20.9` (`22.x` recommended)             |
+| pnpm (via Corepack)     | `10.13.1`                                 |
+| Docker Desktop / Engine | `≥ 24`                                    |
+| Azure OpenAI resource   | Required for production embeddings + chat |
 
 ---
 
@@ -223,45 +224,45 @@ Copy `.env.example` to `.env` and fill in the required values.
 
 ### Azure OpenAI (required for production)
 
-| Variable | Description |
-|---|---|
-| `AZURE_OPENAI_ENDPOINT` | Your Azure OpenAI resource endpoint URL |
-| `AZURE_OPENAI_API_KEY` | API key for the resource |
-| `AZURE_OPENAI_API_VERSION` | API version, default `2025-04-01-preview` |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` | Fast model deployment name (e.g. `gpt-4o-mini`) — used for planning, validation, reranking, and invoice extraction |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING` | Reasoning model deployment name (e.g. `gpt-4o`) — used for answer synthesis |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding model name (e.g. `text-embedding-3-small`) |
-| `AZURE_OPENAI_EMBEDDING_DIMENSIONS` | Embedding dimensions, default `1536` |
+| Variable                                 | Description                                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `AZURE_OPENAI_ENDPOINT`                  | Your Azure OpenAI resource endpoint URL                                                                            |
+| `AZURE_OPENAI_API_KEY`                   | API key for the resource                                                                                           |
+| `AZURE_OPENAI_API_VERSION`               | API version, default `2025-04-01-preview`                                                                          |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`      | Fast model deployment name (e.g. `gpt-4o-mini`) — used for planning, validation, reranking, and invoice extraction |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING` | Reasoning model deployment name (e.g. `gpt-4o`) — used for answer synthesis                                        |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`      | Embedding model name (e.g. `text-embedding-3-small`)                                                               |
+| `AZURE_OPENAI_EMBEDDING_DIMENSIONS`      | Embedding dimensions, default `1536`                                                                               |
 
 ### Auth
 
-| Variable | Description |
-|---|---|
-| `JWT_ACCESS_SECRET` | Min 32-char secret for signing access tokens |
-| `JWT_REFRESH_SECRET` | Min 32-char secret for signing refresh tokens |
+| Variable                 | Description                                   |
+| ------------------------ | --------------------------------------------- |
+| `JWT_ACCESS_SECRET`      | Min 32-char secret for signing access tokens  |
+| `JWT_REFRESH_SECRET`     | Min 32-char secret for signing refresh tokens |
 | `JWT_ACCESS_TTL_SECONDS` | Access token lifetime, default `900` (15 min) |
 
 ### Knowledge Service
 
-| Variable | Default | Description |
-|---|---|---|
-| `KNOWLEDGE_EMBEDDING_PROVIDER` | `azure` | `azure` or `local` (deterministic dev vectors) |
-| `KNOWLEDGE_CHUNK_TARGET_CHARS` | `1800` | Target characters per chunk |
-| `KNOWLEDGE_CHUNK_OVERLAP_CHARS` | `250` | Overlap between consecutive chunks |
-| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2` | Minimum cosine similarity for vector retrieval |
-| `KNOWLEDGE_RERANK_ENABLED` | `true` | Enable LLM reranking after hybrid search |
-| `KNOWLEDGE_RERANK_CANDIDATES` | `20` | Candidate pool size fed into the reranker |
-| `KNOWLEDGE_SEARCH_LIMIT` | `5` | Final number of chunks returned to the agent |
+| Variable                          | Default | Description                                    |
+| --------------------------------- | ------- | ---------------------------------------------- |
+| `KNOWLEDGE_EMBEDDING_PROVIDER`    | `azure` | `azure` or `local` (deterministic dev vectors) |
+| `KNOWLEDGE_CHUNK_TARGET_CHARS`    | `1800`  | Target characters per chunk                    |
+| `KNOWLEDGE_CHUNK_OVERLAP_CHARS`   | `250`   | Overlap between consecutive chunks             |
+| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2`   | Minimum cosine similarity for vector retrieval |
+| `KNOWLEDGE_RERANK_ENABLED`        | `true`  | Enable LLM reranking after hybrid search       |
+| `KNOWLEDGE_RERANK_CANDIDATES`     | `20`    | Candidate pool size fed into the reranker      |
+| `KNOWLEDGE_SEARCH_LIMIT`          | `5`     | Final number of chunks returned to the agent   |
 
 ### Infrastructure
 
-| Variable | Default | Description |
-|---|---|---|
-| `DATABASE_URL` | — | Full PostgreSQL connection string |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-| `REDIS_ENABLED` | `true` | Disable to skip caching entirely |
-| `KAFKA_ENABLED` | `true` | Disable to skip event publishing |
-| `KAFKA_BROKERS` | `127.0.0.1:29092` | Comma-separated Kafka broker addresses |
+| Variable        | Default                  | Description                            |
+| --------------- | ------------------------ | -------------------------------------- |
+| `DATABASE_URL`  | —                        | Full PostgreSQL connection string      |
+| `REDIS_URL`     | `redis://localhost:6379` | Redis connection URL                   |
+| `REDIS_ENABLED` | `true`                   | Disable to skip caching entirely       |
+| `KAFKA_ENABLED` | `true`                   | Disable to skip event publishing       |
+| `KAFKA_BROKERS` | `127.0.0.1:29092`        | Comma-separated Kafka broker addresses |
 
 ---
 
@@ -349,12 +350,12 @@ The AI Gateway exposes a tool-calling interface to any registered tool in the To
 
 ### 6.1 Available Tools
 
-| Tool name | What it does | When it runs |
-|---|---|---|
-| `knowledge.retrieve` | Hybrid BM25 + vector search with LLM reranking | Every factual/informational question |
-| `calculator.evaluate` | Safe arithmetic evaluator (custom recursive descent parser, no `eval`) | Numeric expressions or invoice totals |
-| `sql.query_safe` | Read-only parameterised SQL reports (allowlisted operations only) | Usage metrics, document counts, latency |
-| `document.extract_invoice_fields` | LLM-based invoice extraction — any document format | Invoice summarization workflows |
+| Tool name                         | What it does                                                           | When it runs                            |
+| --------------------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
+| `knowledge.retrieve`              | Hybrid BM25 + vector search with LLM reranking                         | Every factual/informational question    |
+| `calculator.evaluate`             | Safe arithmetic evaluator (custom recursive descent parser, no `eval`) | Numeric expressions or invoice totals   |
+| `sql.query_safe`                  | Read-only parameterised SQL reports (allowlisted operations only)      | Usage metrics, document counts, latency |
+| `document.extract_invoice_fields` | LLM-based invoice extraction — any document format                     | Invoice summarization workflows         |
 
 ### 6.2 End-to-End Tool Call Flow
 
@@ -411,6 +412,7 @@ A mandatory safety net in `AgentRunner` injects a `knowledge.retrieve` call afte
 ### 6.4 Validation Guardrail
 
 The validator receives:
+
 - The synthesized draft answer
 - The actual retrieved chunk snippets (up to 600 chars each)
 - A `requiresGroundedEvidence` flag (true whenever knowledge retrieval was attempted)
@@ -463,11 +465,11 @@ Each chat turn runs four sequential agent phases:
 
 The AI Gateway exposes three transport options:
 
-| Endpoint | Transport | Use case |
-|---|---|---|
-| `POST /chat` | HTTP (sync) | Simple clients, testing |
-| `POST /chat/stream` | Server-Sent Events | Web frontends |
-| `GET /chat/ws` | WebSocket | Real-time bidirectional |
+| Endpoint            | Transport          | Use case                |
+| ------------------- | ------------------ | ----------------------- |
+| `POST /chat`        | HTTP (sync)        | Simple clients, testing |
+| `POST /chat/stream` | Server-Sent Events | Web frontends           |
+| `GET /chat/ws`      | WebSocket          | Real-time bidirectional |
 
 All three emit the same structured step events: `conversation`, `agent_step`, `message`, `tool_start`, `tool_result`, `validation`, `final`.
 
@@ -505,6 +507,7 @@ User: "Summarize invoices for April 2026"
 ### Why LLM for extraction, not regex
 
 Regex works only for one specific document layout. Real-world invoices come in dozens of formats — expense tables, PDFs with labelled fields, scanned documents, multi-currency reports, receipts, purchase orders. An LLM can understand all formats without format-specific code. The LLM extraction is instructed to:
+
 - Return only values explicitly present in the text (no hallucination)
 - Identify the grand total from the document's own verified summary section
 - Filter by the requested period before returning results
@@ -536,13 +539,13 @@ All domain events (document uploaded, conversation created, agent run completed,
 
 ### LLM cost controls
 
-| Mechanism | Implementation |
-|---|---|
-| Token budget | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` hard cap on synthesis |
-| Memory window | `LLM_MEMORY_MAX_MESSAGES=12` — older messages dropped |
-| Rerank candidates | `KNOWLEDGE_RERANK_CANDIDATES=20` — controls LLM rerank input size |
-| Model routing | Planning and validation use `gpt-4o-mini`; synthesis uses `gpt-4o` |
-| Embedding cache | Content-hash dedup prevents re-embedding identical chunks |
+| Mechanism         | Implementation                                                     |
+| ----------------- | ------------------------------------------------------------------ |
+| Token budget      | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` hard cap on synthesis         |
+| Memory window     | `LLM_MEMORY_MAX_MESSAGES=12` — older messages dropped              |
+| Rerank candidates | `KNOWLEDGE_RERANK_CANDIDATES=20` — controls LLM rerank input size  |
+| Model routing     | Planning and validation use `gpt-4o-mini`; synthesis uses `gpt-4o` |
+| Embedding cache   | Content-hash dedup prevents re-embedding identical chunks          |
 
 ### Kubernetes
 
@@ -630,40 +633,40 @@ kubectl scale deployment ai-gateway --replicas=3
 
 ### Auth Service (port 4001)
 
-| Method | Path | Description |
-|---|---|---|
+| Method | Path             | Description                          |
+| ------ | ---------------- | ------------------------------------ |
 | `POST` | `/auth/register` | Create user + tenant, returns tokens |
-| `POST` | `/auth/login` | Login, returns tokens |
-| `POST` | `/auth/refresh` | Refresh access token |
-| `POST` | `/auth/logout` | Revoke refresh token |
-| `GET` | `/health` | Health check |
+| `POST` | `/auth/login`    | Login, returns tokens                |
+| `POST` | `/auth/refresh`  | Refresh access token                 |
+| `POST` | `/auth/logout`   | Revoke refresh token                 |
+| `GET`  | `/health`        | Health check                         |
 
 ### AI Gateway (port 4002)
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/chat` | Synchronous chat (full response) |
-| `POST` | `/chat/stream` | SSE streaming chat |
-| `GET` | `/chat/ws` | WebSocket chat |
-| `GET` | `/health` | Health check |
+| Method | Path           | Description                      |
+| ------ | -------------- | -------------------------------- |
+| `POST` | `/chat`        | Synchronous chat (full response) |
+| `POST` | `/chat/stream` | SSE streaming chat               |
+| `GET`  | `/chat/ws`     | WebSocket chat                   |
+| `GET`  | `/health`      | Health check                     |
 
 ### Knowledge Service (port 4003)
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/documents` | Upload PDF or TXT (`multipart/form-data`) |
-| `GET` | `/documents` | List documents for tenant |
-| `DELETE` | `/documents/:id` | Delete document + chunks |
-| `POST` | `/search` | Semantic + keyword search |
-| `GET` | `/health` | Health check |
+| Method   | Path             | Description                               |
+| -------- | ---------------- | ----------------------------------------- |
+| `POST`   | `/documents`     | Upload PDF or TXT (`multipart/form-data`) |
+| `GET`    | `/documents`     | List documents for tenant                 |
+| `DELETE` | `/documents/:id` | Delete document + chunks                  |
+| `POST`   | `/search`        | Semantic + keyword search                 |
+| `GET`    | `/health`        | Health check                              |
 
 ### Tool Execution Service (port 4004)
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/tools` | Get tool definitions (for AI Gateway) |
-| `POST` | `/tools/execute` | Execute a tool |
-| `GET` | `/health` | Health check |
+| Method | Path             | Description                           |
+| ------ | ---------------- | ------------------------------------- |
+| `GET`  | `/tools`         | Get tool definitions (for AI Gateway) |
+| `POST` | `/tools/execute` | Execute a tool                        |
+| `GET`  | `/health`        | Health check                          |
 
 ---
 
@@ -712,10 +715,12 @@ kubectl scale deployment knowledge-service --replicas=2
 In production, inject secrets via Kubernetes `Secret` resources or a secrets manager (AWS Secrets Manager, Azure Key Vault). Never commit `.env` files with real credentials.
 
 Required secrets:
+
 - `AZURE_OPENAI_API_KEY`
 - `JWT_ACCESS_SECRET` (min 32 chars)
 - `JWT_REFRESH_SECRET` (min 32 chars)
-- `DATABASE_URL`
-=======
+- # `DATABASE_URL`
+
 # knoviq-assesment
->>>>>>> 447afa0399e3b576ba6282a28396a72407b0ec2b
+
+> > > > > > > 447afa0399e3b576ba6282a28396a72407b0ec2b
