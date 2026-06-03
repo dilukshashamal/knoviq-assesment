@@ -523,17 +523,6 @@ function isPureConversationalGreeting(message: string): boolean {
   );
 }
 
-// Keep shouldRetrieveKnowledge for any remaining direct callers (none after this refactor,
-// but retained to avoid breaking compilation if referenced elsewhere).
-function shouldRetrieveKnowledge(message: string): boolean {
-  return !isPureConversationalGreeting(message);
-}
-
-// Kept for symmetry — now delegates to isPureConversationalGreeting
-function isGeneralConversational(message: string): boolean {
-  return isPureConversationalGreeting(message);
-}
-
 function shouldUseInvoiceWorkflow(message: string): boolean {
   return /\binvoices?\b/.test(message);
 }

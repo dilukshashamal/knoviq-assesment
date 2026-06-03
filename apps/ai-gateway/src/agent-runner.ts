@@ -742,51 +742,6 @@ function extractInvoiceExpression(toolCalls: ExecutedToolCall[]): string | undef
   return undefined;
 }
 
-function extractAmountsFromKnowledge(toolCalls: ExecutedToolCall[]): number[] {
-  const amounts: number[] = [];
-
-  for (const toolCall of toolCalls) {
-    if (toolCall.toolName !== "knowledge.retrieve" || toolCall.status !== "succeeded") {
-      continue;
-    }
-
-    const content = extractChunkText(toolCall.output).join("\n");
-
-    for (const match of content.matchAll(/\b\d+(?:\.\d{1,2})?\b/g)) {
-      const value = Number(match[0]);
-
-      if (Number.isFinite(value) && value > 0) {
-        amounts.push(value);
-      }
-    }
-  }
-
-  return amounts.slice(0, 20);
-}
-
-function extractChunkText(output: unknown): string[] {
-  if (!output || typeof output !== "object" || !("results" in output)) {
-    return [];
-  }
-
-  const results = (output as { results?: unknown }).results;
-
-  if (!Array.isArray(results)) {
-    return [];
-  }
-
-  return results
-    .map((result) => {
-      if (!result || typeof result !== "object" || !("chunkContent" in result)) {
-        return undefined;
-      }
-
-      const content = (result as { chunkContent?: unknown }).chunkContent;
-      return typeof content === "string" ? content : undefined;
-    })
-    .filter((content): content is string => Boolean(content));
-}
-
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
