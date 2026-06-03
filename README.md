@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Knoviq — Enterprise AI Knowledge Assistant Platform
 
 Knoviq is a production-ready, multi-tenant AI knowledge assistant built as a **microservices** platform. Five independent services handle authentication, AI orchestration, document knowledge management, tool execution, and the web frontend. Each runs as its own process, has its own Docker image, and scales independently.
@@ -715,3 +716,6 @@ Required secrets:
 - `JWT_ACCESS_SECRET` (min 32 chars)
 - `JWT_REFRESH_SECRET` (min 32 chars)
 - `DATABASE_URL`
+=======
+# knoviq-assesment
+>>>>>>> 447afa0399e3b576ba6282a28396a72407b0ec2b
