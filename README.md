@@ -1,10 +1,10 @@
-# Knoviq — Enterprise AI Knowledge Assistant Platform
+# Knoviq - Enterprise AI Knowledge Assistant Platform
 
 Knoviq is a production-ready, multi-tenant AI knowledge assistant built as a **microservices** platform. Five independent services handle authentication, AI orchestration, document knowledge management, tool execution, and the web frontend. Each runs as its own process, has its own Docker image, and scales independently.
 
-The codebase is organised as a **monorepo** — all services share one git repository — purely for developer convenience. The monorepo is a storage decision, not an architectural one. Microservices and monorepo are independent concepts; this project uses both together (the same pattern used by Google, Uber, and Meta).
+The codebase is organised as a **monorepo** - all services share one git repository - purely for developer convenience. The monorepo is a storage decision, not an architectural one. Microservices and monorepo are independent concepts; this project uses both together.
 
-Knoviq is a **microservices** platform — five independent services, each with its own process, port, Docker image, and independent deployment lifecycle. They communicate over HTTP and share no in-process state.
+Knoviq is a **microservices** platform - five independent services, each with its own process, port, Docker image, and independent deployment lifecycle. They communicate over HTTP and share no in-process state.
 
 The source code is organised as a **monorepo** (all services in one git repository) purely for developer convenience: atomic cross-service changes, shared TypeScript packages, and a single CI pipeline. The monorepo is a code organisation choice, not an architectural one. Each service can still be built, containerised, and scaled independently.
 
@@ -39,7 +39,7 @@ Each microservice satisfies the key microservice properties:
 | **Failure isolation**        | If Tool Execution Service is down, Auth and Knowledge Service keep running  |
 | **Technology independence**  | Each service can adopt a different runtime, language, or DB in future       |
 
-The shared packages (`@knoviq/cache`, `@knoviq/database`, etc.) are compiled libraries — like npm packages. They introduce zero runtime coupling: a shared package is a build-time dependency, not a shared process or shared memory.
+The shared packages (`@knoviq/cache`, `@knoviq/database`, etc.) are compiled libraries - like npm packages. They introduce zero runtime coupling: a shared package is a build-time dependency, not a shared process or shared memory.
 
 ---
 
@@ -202,7 +202,7 @@ pnpm --filter @knoviq/tool-execution-service dev
 pnpm --filter @knoviq/web dev
 ```
 
-`dev` mode uses `tsx watch` which reloads on every `.ts` file save. Changes to `.ts` source files are picked up automatically — no rebuild needed.
+`dev` mode uses `tsx watch` which reloads on every `.ts` file save. Changes to `.ts` source files are picked up automatically - no rebuild needed.
 
 > **Important:** `start` mode runs from compiled `dist/` files. After code changes in `start` mode, run `pnpm build` and restart the service.
 
@@ -212,7 +212,7 @@ pnpm --filter @knoviq/web dev
 pnpm smoke:invoice
 ```
 
-This builds the repo, starts all four backend services, uploads a sample invoice TXT, asks the agent to summarize it, and asserts the correct total — all in one command.
+This builds the repo, starts all four backend services, uploads a sample invoice TXT, asks the agent to summarize it, and asserts the correct total - all in one command.
 
 ---
 
@@ -717,4 +717,7 @@ Required secrets:
 - `AZURE_OPENAI_API_KEY`
 - `JWT_ACCESS_SECRET` (min 32 chars)
 - `JWT_REFRESH_SECRET` (min 32 chars)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2fddde4163a06a830d67ddd9b1c53f795c7bb4b4
