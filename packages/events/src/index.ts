@@ -105,18 +105,38 @@ class DisabledEventPublisher implements EventPublisher {
 
 class KafkaEventPublisher implements EventPublisher {
   private readonly producer: Producer;
+  /**
+   * Holds the in-flight connect() promise while connecting.
+   * Cleared on failure so the next publish retries the connection.
+   * Set to the resolved producer after a successful connect — but
+   * also cleared if the producer emits DISCONNECT so the next
+   * publish triggers a fresh reconnect.
+   */
   private connectPromise: Promise<Producer> | undefined;
 
   constructor(private readonly settings: EventBusSettings) {
     const kafka = new Kafka({
       brokers: settings.brokers,
       clientId: settings.clientId,
+      // Only ERROR-level logs from the Kafka client to avoid noisy INFO in
+      // application log streams. Adjust to logLevel.WARN for richer diagnostics.
       logLevel: logLevel.ERROR,
     });
 
     this.producer = kafka.producer({
-      allowAutoTopicCreation: true,
-      createPartitioner: Partitioners.DefaultPartitioner,
+      // Only auto-create topics in non-production to prevent typos silently
+      // creating phantom topics in a production cluster.
+      allowAutoTopicCreation: process.env.NODE_ENV !== "production",
+      // LegacyPartitioner is the correct choice in KafkaJS v2 — DefaultPartitioner
+      // is deprecated and emits a warning on every producer creation.
+      createPartitioner: Partitioners.LegacyPartitioner,
+    });
+
+    // When the broker disconnects the producer, reset connectPromise so the
+    // next publish call triggers a fresh reconnect instead of hanging on
+    // the stale resolved promise.
+    this.producer.on("producer.disconnect", () => {
+      this.connectPromise = undefined;
     });
   }
 
@@ -140,28 +160,44 @@ class KafkaEventPublisher implements EventPublisher {
         ],
         topic: resolveTopic(this.settings, input.topic),
       });
-    } catch {
-      return;
+    } catch (error) {
+      // Kafka failures must never propagate to the request path.
+      // Log at warn level so ops can detect persistent broker issues
+      // without crashing user-facing endpoints.
+      // Using process.stderr directly avoids importing a logger package here.
+      process.stderr.write(
+        `[events] Failed to publish ${input.event.eventType} to ${input.topic}: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
     }
   }
 
   async shutdown(): Promise<void> {
     if (!this.connectPromise) {
+      // Producer was never connected — nothing to disconnect.
       return;
     }
 
     try {
+      // Wait for any in-flight connect to resolve before disconnecting.
+      await this.connectPromise;
       await this.producer.disconnect();
     } catch {
-      return;
+      // Best-effort shutdown — ignore errors.
+    } finally {
+      this.connectPromise = undefined;
     }
   }
 
   private async connect(): Promise<Producer> {
+    // If a valid connectPromise exists (either in-flight or resolved), reuse it.
+    // If not (first call, or cleared after disconnect), start a new connection.
     this.connectPromise ??= this.producer
       .connect()
       .then(() => this.producer)
       .catch((error: unknown) => {
+        // Clear on failure so the next caller retries.
         this.connectPromise = undefined;
         throw error;
       });

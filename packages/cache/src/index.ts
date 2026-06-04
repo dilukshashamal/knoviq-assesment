@@ -76,9 +76,19 @@ class RedisCacheClient implements CacheClient {
       url: settings.redisUrl,
     }) as RedisClientType;
 
-    this.client.on("error", () => {
-      // Cache errors should never crash request handling. Operations below
-      // degrade to misses if Redis is unavailable.
+    // Log Redis errors at warn level so ops can detect broker issues.
+    // Operations degrade to cache misses — never crash the request path.
+    this.client.on("error", (err: unknown) => {
+      process.stderr.write(
+        `[cache] Redis error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    });
+
+    // When the client reconnects after a drop, reset connectPromise so the
+    // next operation gets a fresh reference to the now-open client.
+    this.client.on("ready", () => {
+      // Client is open — ensure subsequent calls use the live connection.
+      this.connectPromise = undefined;
     });
   }
 
@@ -147,10 +157,14 @@ class RedisCacheClient implements CacheClient {
   }
 
   private async connect(): Promise<RedisClientType> {
+    // If the client is already open, use it directly.
     if (this.client.isOpen) {
       return this.client;
     }
 
+    // Otherwise initiate a new connection. The ?= ensures only one
+    // concurrent connect attempt runs at a time. On failure the promise
+    // is cleared so the next caller retries.
     this.connectPromise ??= this.client
       .connect()
       .then(() => this.client)
