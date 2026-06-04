@@ -1,17 +1,23 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  BarChart3,
   CheckCircle2,
   CircleAlert,
+  Clock3,
   FileText,
+  FolderOpen,
+  Gauge,
   Loader2,
   LogIn,
+  MessageSquarePlus,
   Receipt,
   RefreshCw,
   Send,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
   UserPlus,
@@ -69,6 +75,7 @@ interface ToolCall {
 interface ChatResponse {
   answer: string;
   conversationId: string;
+  requiresGroundedEvidence?: boolean;
   toolCalls: ToolCall[];
   validation: {
     confidence: number;
@@ -79,33 +86,47 @@ interface ChatResponse {
   };
 }
 
-interface InvoiceItem {
-  amount: number;
-  approvalStatus?: string;
-  category?: string;
-  chunkId?: string;
-  department?: string;
-  description?: string;
-  documentId?: string;
-  documentTitle?: string;
-  evidence?: string;
-  invoiceDate?: string;
-  invoiceNumber?: string;
-  vendor?: string;
+interface ChatMessage {
+  content: string;
+  createdAt: string;
+  id: string;
+  role: "assistant" | "user";
+  toolCalls?: ToolCall[];
+  validation?: ChatResponse["validation"];
 }
 
-interface InvoiceExtractionOutput {
-  currency: string;
-  expression?: string;
-  invoiceCount: number;
-  invoices: InvoiceItem[];
-  period: string | null;
-  skippedChunkCount?: number;
-  totalAmount: number;
+interface ChatThread {
+  conversationId?: string;
+  createdAt: string;
+  id: string;
+  messages: ChatMessage[];
+  title: string;
+  updatedAt: string;
+}
+
+interface ToolExecutionResponse {
+  error?: {
+    code: string;
+    message: string;
+  };
+  latencyMs: number;
+  output?: {
+    rows?: Record<string, unknown>[];
+  };
+  status: "succeeded" | "failed";
+  toolName: string;
+}
+
+interface ObservabilityResponse {
+  llm_usage_summary?: ToolExecutionResponse;
+  recent_tool_executions?: ToolExecutionResponse;
+  service_metric_summary?: ToolExecutionResponse;
+  tool_execution_summary?: ToolExecutionResponse;
 }
 
 interface ApiErrorBody {
   code?: string;
+  details?: string;
   error?: {
     code?: string;
     message?: string;
@@ -114,7 +135,8 @@ interface ApiErrorBody {
 }
 
 const SESSION_STORAGE_KEY = "knoviq.session";
-const defaultQuestion = "Summarize uploaded invoices and calculate total expenses for April 2026.";
+const THREAD_STORAGE_KEY = "knoviq.chatThreads";
+const defaultQuestion = "Summarize this document and list the most important policy points.";
 
 export default function HomePage() {
   const [mode, setMode] = useState<"register" | "login">("register");
@@ -126,39 +148,77 @@ export default function HomePage() {
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [documentTitle, setDocumentTitle] = useState("April invoice");
+  const [documentTitle, setDocumentTitle] = useState("Knowledge Assistant Policy");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [threadState, setThreadState] = useState(() => {
+    const thread = createThread();
+    return {
+      activeThreadId: thread.id,
+      threads: [thread],
+    };
+  });
   const [chatInput, setChatInput] = useState(defaultQuestion);
-  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
   const [healthLoading, setHealthLoading] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<"monitor" | "sources" | "trace">("sources");
+  const [observability, setObservability] = useState<ObservabilityResponse | null>(null);
+  const [observabilityLoading, setObservabilityLoading] = useState(false);
+  const [observabilityStatus, setObservabilityStatus] = useState<string | null>(null);
+  const [storageReady, setStorageReady] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const accessToken = session?.tokens.accessToken;
-  const healthReadyCount = healthChecks.filter((check) => check.ok).length;
-  const invoiceExtraction = useMemo(
+  const activeThread = useMemo(
     () =>
-      chatResponse?.toolCalls.find((call) => call.toolName === "document.extract_invoice_fields"),
-    [chatResponse],
+      threadState.threads.find((thread) => thread.id === threadState.activeThreadId) ??
+      threadState.threads[0],
+    [threadState.activeThreadId, threadState.threads],
   );
+  const latestAssistant = useMemo(() => findLatestAssistant(activeThread), [activeThread]);
+  const latestToolCalls = latestAssistant?.toolCalls ?? [];
+  const monitor = useMemo(() => buildMonitorSummary(observability), [observability]);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!stored) {
-      return;
+    const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const storedThreads = window.localStorage.getItem(THREAD_STORAGE_KEY);
+
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession) as AuthResponse;
+        setSession(parsed);
+        setEmail(parsed.user.email);
+      } catch {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
     }
 
-    try {
-      const parsed = JSON.parse(stored) as AuthResponse;
-      setSession(parsed);
-      setEmail(parsed.user.email);
-    } catch {
-      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    if (storedThreads) {
+      try {
+        const parsed = JSON.parse(storedThreads) as {
+          activeThreadId: string;
+          threads: ChatThread[];
+        };
+
+        if (parsed.threads.length > 0) {
+          setThreadState(parsed);
+        }
+      } catch {
+        window.localStorage.removeItem(THREAD_STORAGE_KEY);
+      }
     }
+
+    setStorageReady(true);
   }, []);
+
+  useEffect(() => {
+    if (storageReady) {
+      window.localStorage.setItem(THREAD_STORAGE_KEY, JSON.stringify(threadState));
+    }
+  }, [storageReady, threadState]);
 
   useEffect(() => {
     void refreshHealth();
@@ -172,8 +232,13 @@ export default function HomePage() {
   useEffect(() => {
     if (accessToken) {
       void refreshDocuments(accessToken);
+      void refreshObservability(accessToken);
     }
   }, [accessToken]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [activeThread?.messages.length, chatLoading]);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -208,7 +273,10 @@ export default function HomePage() {
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await uploadSelectedFile();
+  }
 
+  async function uploadSelectedFile() {
     if (!accessToken) {
       setUploadStatus("Sign in before uploading documents.");
       return;
@@ -250,25 +318,67 @@ export default function HomePage() {
     event.preventDefault();
 
     if (!accessToken) {
-      setChatStatus("Sign in before asking the agent.");
+      setChatStatus("Sign in before asking the assistant.");
       return;
     }
 
+    const trimmed = chatInput.trim();
+
+    if (!trimmed || !activeThread) {
+      return;
+    }
+
+    const userMessage: ChatMessage = {
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+      id: crypto.randomUUID(),
+      role: "user",
+    };
+
+    const threadBeforeRun = activeThread;
+    upsertThread({
+      ...threadBeforeRun,
+      messages: [...threadBeforeRun.messages, userMessage],
+      title:
+        threadBeforeRun.messages.length === 0 ? titleFromMessage(trimmed) : threadBeforeRun.title,
+      updatedAt: userMessage.createdAt,
+    });
+    setChatInput("");
     setChatLoading(true);
     setChatStatus(null);
 
     try {
       const response = await requestJson<ChatResponse>("/api/chat", {
-        body: JSON.stringify({ message: chatInput }),
+        body: JSON.stringify({
+          ...(threadBeforeRun.conversationId
+            ? { conversationId: threadBeforeRun.conversationId }
+            : {}),
+          message: trimmed,
+        }),
         headers: {
           authorization: `Bearer ${accessToken}`,
           "content-type": "application/json",
         },
         method: "POST",
       });
+      const assistantMessage: ChatMessage = {
+        content: response.answer,
+        createdAt: new Date().toISOString(),
+        id: crypto.randomUUID(),
+        role: "assistant",
+        toolCalls: response.toolCalls,
+        validation: response.validation,
+      };
 
-      setChatResponse(response);
-      setChatStatus("Agent run completed.");
+      upsertThread((current) => ({
+        ...current,
+        conversationId: response.conversationId,
+        messages: [...current.messages, assistantMessage],
+        updatedAt: assistantMessage.createdAt,
+      }));
+      setInspectorTab(response.toolCalls.length > 0 ? "trace" : "sources");
+      setChatStatus("Answer generated.");
+      void refreshObservability(accessToken);
     } catch (error) {
       setChatStatus(getErrorMessage(error));
     } finally {
@@ -307,10 +417,29 @@ export default function HomePage() {
     }
   }
 
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setSelectedFile(file);
+
+    if (file && (!documentTitle || documentTitle === "Knowledge Assistant Policy")) {
+      setDocumentTitle(file.name.replace(/\.[^.]+$/, ""));
+    }
+  }
+
+  function handleNewChat() {
+    const thread = createThread();
+    setThreadState((current) => ({
+      activeThreadId: thread.id,
+      threads: [thread, ...current.threads],
+    }));
+    setChatInput(defaultQuestion);
+    setChatStatus(null);
+  }
+
   function handleSignOut() {
     setSession(null);
     setDocuments([]);
-    setChatResponse(null);
+    setObservability(null);
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
   }
 
@@ -348,368 +477,640 @@ export default function HomePage() {
     }
   }
 
+  async function refreshObservability(token = accessToken) {
+    if (!token) {
+      return;
+    }
+
+    setObservabilityLoading(true);
+    setObservabilityStatus(null);
+    try {
+      const response = await requestJson<ObservabilityResponse>("/api/observability", {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      });
+      setObservability(response);
+    } catch (error) {
+      setObservabilityStatus(getErrorMessage(error));
+    } finally {
+      setObservabilityLoading(false);
+    }
+  }
+
+  function upsertThread(next: ChatThread | ((current: ChatThread) => ChatThread)) {
+    setThreadState((current) => {
+      const existing =
+        current.threads.find((thread) => thread.id === current.activeThreadId) ??
+        current.threads[0] ??
+        createThread();
+      const nextThread = typeof next === "function" ? next(existing) : next;
+      const remaining = current.threads.filter((thread) => thread.id !== nextThread.id);
+
+      return {
+        activeThreadId: nextThread.id,
+        threads: [nextThread, ...remaining],
+      };
+    });
+  }
+
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
-        <aside className="border-b border-border bg-surface px-5 py-5 lg:border-b-0 lg:border-r">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-muted-foreground">Knoviq</p>
-              <h1 className="mt-1 text-2xl font-semibold">Agent Console</h1>
-            </div>
-            <button
-              className="icon-button"
-              onClick={() => void refreshHealth()}
-              title="Refresh service health"
-              type="button"
-            >
-              <RefreshCw className={healthLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            </button>
+    <main className="app-shell">
+      <aside className="chat-rail">
+        <div className="brand-lockup">
+          <div className="brand-mark">
+            <Sparkles className="h-5 w-5" />
           </div>
+          <div className="min-w-0">
+            <p className="brand-name">Knoviq</p>
+            <p className="brand-subtitle">Document intelligence</p>
+          </div>
+        </div>
 
-          <section className="mt-6">
-            <div className="flex items-center justify-between">
-              <h2 className="section-title">Services</h2>
-              <span className="text-sm text-muted-foreground">
-                {healthReadyCount}/{healthChecks.length || 4} ready
-              </span>
-            </div>
-            <div className="mt-3 space-y-2">
-              {(healthChecks.length > 0 ? healthChecks : fallbackHealthChecks()).map((check) => (
-                <div className="status-row" key={check.key}>
-                  <span className={check.ok ? "status-dot bg-success" : "status-dot bg-danger"} />
-                  <span className="min-w-0 flex-1 truncate">{check.label}</span>
-                  <span className="text-muted-foreground">
-                    {check.status > 0 ? `${check.latencyMs}ms` : "down"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
+        <button className="new-chat-button" onClick={handleNewChat} type="button">
+          <MessageSquarePlus className="h-4 w-4" />
+          New chat
+        </button>
 
-          <section className="mt-8">
-            <div className="segmented-control">
+        <section className="rail-section">
+          <div className="section-heading">
+            <span>Chats</span>
+            <span>{threadState.threads.length}</span>
+          </div>
+          <div className="thread-list">
+            {threadState.threads.map((thread) => (
               <button
-                className={mode === "register" ? "active" : ""}
-                onClick={() => setMode("register")}
+                className={
+                  thread.id === threadState.activeThreadId ? "thread-item active" : "thread-item"
+                }
+                key={thread.id}
+                onClick={() =>
+                  setThreadState((current) => ({ ...current, activeThreadId: thread.id }))
+                }
                 type="button"
               >
-                <UserPlus className="h-4 w-4" />
-                Register
+                <MessageSquarePlus className="h-4 w-4" />
+                <span className="min-w-0 flex-1 truncate text-left">{thread.title}</span>
               </button>
-              <button
-                className={mode === "login" ? "active" : ""}
-                onClick={() => setMode("login")}
-                type="button"
-              >
-                <LogIn className="h-4 w-4" />
-                Login
-              </button>
-            </div>
-
-            <form className="mt-4 space-y-3" onSubmit={(event) => void handleAuth(event)}>
-              <label className="field-label">
-                Email
-                <input
-                  className="field-input"
-                  onChange={(event) => setEmail(event.target.value)}
-                  type="email"
-                  value={email}
-                />
-              </label>
-              <label className="field-label">
-                Password
-                <input
-                  className="field-input"
-                  onChange={(event) => setPassword(event.target.value)}
-                  type="password"
-                  value={password}
-                />
-              </label>
-              {mode === "register" ? (
-                <>
-                  <label className="field-label">
-                    Full name
-                    <input
-                      className="field-input"
-                      onChange={(event) => setFullName(event.target.value)}
-                      value={fullName}
-                    />
-                  </label>
-                  <label className="field-label">
-                    Tenant
-                    <input
-                      className="field-input"
-                      onChange={(event) => setTenantName(event.target.value)}
-                      value={tenantName}
-                    />
-                  </label>
-                </>
-              ) : null}
-              <button className="primary-button w-full" disabled={authLoading} type="submit">
-                {authLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ShieldCheck className="h-4 w-4" />
-                )}
-                {mode === "register" ? "Create session" : "Start session"}
-              </button>
-            </form>
-
-            {authStatus ? <p className="mt-3 text-sm text-muted-foreground">{authStatus}</p> : null}
-            {session ? (
-              <div className="mt-4 border-t border-border pt-4">
-                <p className="text-sm font-medium">{session.user.tenantName}</p>
-                <p className="mt-1 truncate text-sm text-muted-foreground">{session.user.email}</p>
-                <p className="mt-2 text-sm text-muted-foreground">Role: {session.user.role}</p>
-                <button className="ghost-button mt-3 w-full" onClick={handleSignOut} type="button">
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-          </section>
-        </aside>
-
-        <section className="flex min-h-[720px] flex-col px-5 py-5 md:px-8">
-          <div className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-muted-foreground">Workspace</p>
-              <h2 className="mt-1 text-3xl font-semibold">Documents and chat</h2>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Activity className="h-4 w-4 text-primary" />
-              {session ? "Authenticated workspace" : "Waiting for session"}
-            </div>
-          </div>
-
-          <div className="grid flex-1 grid-cols-1 gap-6 py-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <section className="min-w-0">
-              <div className="flex items-center justify-between">
-                <h3 className="section-title">Document Intake</h3>
-                <button
-                  className="icon-button"
-                  disabled={!accessToken || documentsLoading}
-                  onClick={() => void refreshDocuments()}
-                  title="Refresh documents"
-                  type="button"
-                >
-                  <RefreshCw className={documentsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                </button>
-              </div>
-
-              <form className="mt-4 space-y-3" onSubmit={(event) => void handleUpload(event)}>
-                <label className="field-label">
-                  Title
-                  <input
-                    className="field-input"
-                    onChange={(event) => setDocumentTitle(event.target.value)}
-                    value={documentTitle}
-                  />
-                </label>
-                <label className="file-drop">
-                  <Upload className="h-5 w-5 text-primary" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {selectedFile ? selectedFile.name : "Choose invoice or knowledge file"}
-                    </span>
-                    <span className="block text-sm text-muted-foreground">
-                      TXT and PDF are supported
-                    </span>
-                  </span>
-                  <input
-                    accept=".txt,.text,.pdf,text/plain,application/pdf"
-                    className="sr-only"
-                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                    type="file"
-                  />
-                </label>
-                <button
-                  className="primary-button w-full"
-                  disabled={!accessToken || documentsLoading}
-                  type="submit"
-                >
-                  {documentsLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  Upload document
-                </button>
-              </form>
-              {uploadStatus ? (
-                <p className="mt-3 text-sm text-muted-foreground">{uploadStatus}</p>
-              ) : null}
-
-              <div className="mt-6 space-y-2">
-                {documents.length === 0 ? (
-                  <div className="empty-state">
-                    <FileText className="h-5 w-5" />
-                    <span>No documents loaded for this tenant.</span>
-                  </div>
-                ) : (
-                  documents.map((document) => (
-                    <div className="document-row" key={document.documentId}>
-                      <FileText className="h-4 w-4 shrink-0 text-primary" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{document.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {document.status} · {document.chunkCount} chunks · {document.visibility}
-                        </p>
-                      </div>
-                      <button
-                        className="icon-button h-9 w-9"
-                        disabled={documentsLoading}
-                        onClick={() => void handleDeleteDocument(document)}
-                        title={`Delete ${document.title}`}
-                        type="button"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="flex min-h-[620px] min-w-0 flex-col">
-              <div className="flex items-center justify-between">
-                <h3 className="section-title">Agent Chat</h3>
-                <span className="text-sm text-muted-foreground">
-                  {chatResponse ? chatResponse.validation.status.replace("_", " ") : "No run yet"}
-                </span>
-              </div>
-
-              <div className="answer-surface mt-4">
-                {chatResponse ? (
-                  <div>
-                    <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Conversation {chatResponse.conversationId.slice(0, 8)}
-                    </div>
-                    <p className="whitespace-pre-wrap leading-7">{chatResponse.answer}</p>
-                  </div>
-                ) : (
-                  <div className="flex h-full min-h-[360px] items-center justify-center text-center text-muted-foreground">
-                    <div>
-                      <Workflow className="mx-auto h-8 w-8 text-primary" />
-                      <p className="mt-3 max-w-md">
-                        Upload invoices or knowledge files, then ask the agent to retrieve, reason,
-                        calculate, and validate.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <form
-                className="mt-4 flex flex-col gap-3 md:flex-row"
-                onSubmit={(event) => void handleChat(event)}
-              >
-                <textarea
-                  className="chat-input"
-                  onChange={(event) => setChatInput(event.target.value)}
-                  rows={3}
-                  value={chatInput}
-                />
-                <button
-                  className="primary-button md:w-36"
-                  disabled={!accessToken || chatLoading}
-                  type="submit"
-                >
-                  {chatLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Ask
-                </button>
-              </form>
-              {chatStatus ? (
-                <p className="mt-3 text-sm text-muted-foreground">{chatStatus}</p>
-              ) : null}
-            </section>
+            ))}
           </div>
         </section>
 
-        <aside className="border-t border-border bg-surface px-5 py-5 lg:border-l lg:border-t-0">
-          <h2 className="section-title">Agent Trace</h2>
-          <div className="mt-4 space-y-3">
-            {chatResponse?.toolCalls.length ? (
-              chatResponse.toolCalls.map((call, index) => (
-                <div className="trace-row" key={`${call.toolName}-${index}`}>
-                  <span
-                    className={
-                      call.status === "succeeded" ? "status-dot bg-success" : "status-dot bg-danger"
-                    }
-                  />
+        <section className="rail-section">
+          <div className="section-heading">
+            <span>Files</span>
+            <button
+              className="mini-icon-button"
+              disabled={!accessToken || documentsLoading}
+              onClick={() => void refreshDocuments()}
+              title="Refresh files"
+              type="button"
+            >
+              <RefreshCw
+                className={documentsLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"}
+              />
+            </button>
+          </div>
+          <div className="file-list">
+            {documents.length === 0 ? (
+              <p className="muted-copy">Upload a PDF or TXT to start grounded chat.</p>
+            ) : (
+              documents.map((document) => (
+                <div className="file-item" key={document.documentId}>
+                  <FileText className="h-4 w-4 shrink-0 text-primary" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{call.toolName}</p>
+                    <p className="truncate text-sm font-medium">{document.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {call.status} {call.latencyMs ? `· ${call.latencyMs}ms` : ""}
+                      {document.chunkCount} chunks | {document.visibility}
                     </p>
                   </div>
+                  <button
+                    className="mini-icon-button"
+                    disabled={documentsLoading}
+                    onClick={() => void handleDeleteDocument(document)}
+                    title={`Delete ${document.title}`}
+                    type="button"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               ))
-            ) : (
-              <div className="empty-state">
-                <Workflow className="h-5 w-5" />
-                <span>Tool calls appear after a chat run.</span>
-              </div>
             )}
           </div>
+        </section>
 
-          <section className="mt-8">
-            <h3 className="section-title">Validation</h3>
-            <div className="mt-4 validation-panel">
-              {chatResponse ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    {chatResponse.validation.status === "grounded" ? (
-                      <CheckCircle2 className="h-5 w-5 text-success" />
-                    ) : (
-                      <CircleAlert className="h-5 w-5 text-warning" />
-                    )}
-                    <span className="font-medium">
-                      {chatResponse.validation.status.replace("_", " ")}
-                    </span>
+        <section className="rail-section rail-auth">
+          <div className="section-heading">
+            <span>Session</span>
+            <span>{session ? session.user.role : "off"}</span>
+          </div>
+          {session ? (
+            <div className="session-box">
+              <p className="truncate text-sm font-semibold">{session.user.tenantName}</p>
+              <p className="truncate text-xs text-muted-foreground">{session.user.email}</p>
+              <button
+                className="secondary-button mt-3 w-full"
+                onClick={handleSignOut}
+                type="button"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <AuthForm
+              authLoading={authLoading}
+              authStatus={authStatus}
+              email={email}
+              fullName={fullName}
+              mode={mode}
+              onEmailChange={setEmail}
+              onFullNameChange={setFullName}
+              onModeChange={setMode}
+              onPasswordChange={setPassword}
+              onSubmit={handleAuth}
+              onTenantNameChange={setTenantName}
+              password={password}
+              tenantName={tenantName}
+            />
+          )}
+        </section>
+      </aside>
+
+      <section className="chat-main">
+        <header className="top-bar">
+          <div>
+            <p className="eyebrow">Ask your files</p>
+            <h1>{activeThread?.title ?? "New chat"}</h1>
+          </div>
+          <div className="service-strip">
+            {(healthChecks.length > 0 ? healthChecks : fallbackHealthChecks()).map((check) => (
+              <span className={check.ok ? "service-pill ok" : "service-pill"} key={check.key}>
+                {check.label}
+              </span>
+            ))}
+            <button className="mini-icon-button" onClick={() => void refreshHealth()} type="button">
+              <RefreshCw className={healthLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+            </button>
+          </div>
+        </header>
+
+        <div className="message-scroll">
+          {activeThread && activeThread.messages.length > 0 ? (
+            activeThread.messages.map((message) => (
+              <article className={`message-row ${message.role}`} key={message.id}>
+                <div className="message-avatar">
+                  {message.role === "user" ? "U" : <Sparkles className="h-4 w-4" />}
+                </div>
+                <div className="message-bubble">
+                  <div className="message-meta">
+                    <span>{message.role === "user" ? "You" : "Knoviq"}</span>
+                    <span>{formatTime(message.createdAt)}</span>
                   </div>
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    Confidence {Math.round(chatResponse.validation.confidence * 100)}%
-                  </p>
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{ width: `${Math.round(chatResponse.validation.confidence * 100)}%` }}
-                    />
-                  </div>
-                  {chatResponse.validation.issues.length > 0 ? (
-                    <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                      {chatResponse.validation.issues.map((issue) => (
-                        <li key={issue}>{issue}</li>
-                      ))}
-                    </ul>
+                  <p>{message.content}</p>
+                  {message.validation ? (
+                    <div className="validation-chip">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      {message.validation.status.replace("_", " ")} |{" "}
+                      {Math.round(message.validation.confidence * 100)}%
+                    </div>
                   ) : null}
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  The validator checks hallucination risk after each run.
-                </p>
-              )}
-            </div>
-          </section>
+                </div>
+              </article>
+            ))
+          ) : (
+            <EmptyChat onSuggestion={(text) => setChatInput(text)} />
+          )}
+          {chatLoading ? (
+            <article className="message-row assistant">
+              <div className="message-avatar">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="message-bubble typing">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Running retrieval, tools, synthesis, and validation
+              </div>
+            </article>
+          ) : null}
+          <div ref={messagesEndRef} />
+        </div>
 
-          <section className="mt-8">
-            <h3 className="section-title">Invoice Output</h3>
-            <div className="mt-4">
-              <InvoicePanel
-                data={invoiceExtraction?.output}
-                toolCalls={chatResponse?.toolCalls ?? []}
-              />
-            </div>
-          </section>
-        </aside>
-      </div>
+        <form className="composer" onSubmit={(event) => void handleChat(event)}>
+          <textarea
+            onChange={(event) => setChatInput(event.target.value)}
+            placeholder="Ask anything about the uploaded files..."
+            rows={1}
+            value={chatInput}
+          />
+          <button
+            disabled={!accessToken || chatLoading || !chatInput.trim()}
+            title="Send"
+            type="submit"
+          >
+            {chatLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </button>
+        </form>
+        {chatStatus ? <p className="status-copy">{chatStatus}</p> : null}
+      </section>
+
+      <aside className="inspector">
+        <div className="inspector-tabs">
+          <button
+            className={inspectorTab === "sources" ? "active" : ""}
+            onClick={() => setInspectorTab("sources")}
+            type="button"
+          >
+            <FolderOpen className="h-4 w-4" />
+            Sources
+          </button>
+          <button
+            className={inspectorTab === "trace" ? "active" : ""}
+            onClick={() => setInspectorTab("trace")}
+            type="button"
+          >
+            <Workflow className="h-4 w-4" />
+            Trace
+          </button>
+          <button
+            className={inspectorTab === "monitor" ? "active" : ""}
+            onClick={() => {
+              setInspectorTab("monitor");
+              void refreshObservability();
+            }}
+            type="button"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Monitor
+          </button>
+        </div>
+
+        {inspectorTab === "sources" ? (
+          <SourcesPanel
+            accessToken={accessToken}
+            documentTitle={documentTitle}
+            documents={documents}
+            documentsLoading={documentsLoading}
+            onDelete={handleDeleteDocument}
+            onFileChange={handleFileChange}
+            onTitleChange={setDocumentTitle}
+            onUpload={handleUpload}
+            selectedFile={selectedFile}
+            uploadStatus={uploadStatus}
+          />
+        ) : null}
+
+        {inspectorTab === "trace" ? (
+          <TracePanel latestAssistant={latestAssistant} toolCalls={latestToolCalls} />
+        ) : null}
+
+        {inspectorTab === "monitor" ? (
+          <MonitorPanel
+            loading={observabilityLoading}
+            monitor={monitor}
+            onRefresh={() => void refreshObservability()}
+            status={observabilityStatus}
+          />
+        ) : null}
+      </aside>
     </main>
+  );
+}
+
+function AuthForm(props: {
+  authLoading: boolean;
+  authStatus: string | null;
+  email: string;
+  fullName: string;
+  mode: "register" | "login";
+  onEmailChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onModeChange: (value: "register" | "login") => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onTenantNameChange: (value: string) => void;
+  password: string;
+  tenantName: string;
+}) {
+  return (
+    <form className="auth-form" onSubmit={props.onSubmit}>
+      <div className="mode-switch">
+        <button
+          className={props.mode === "register" ? "active" : ""}
+          onClick={() => props.onModeChange("register")}
+          type="button"
+        >
+          <UserPlus className="h-4 w-4" />
+          Register
+        </button>
+        <button
+          className={props.mode === "login" ? "active" : ""}
+          onClick={() => props.onModeChange("login")}
+          type="button"
+        >
+          <LogIn className="h-4 w-4" />
+          Login
+        </button>
+      </div>
+      <input
+        onChange={(event) => props.onEmailChange(event.target.value)}
+        placeholder="Email"
+        type="email"
+        value={props.email}
+      />
+      <input
+        onChange={(event) => props.onPasswordChange(event.target.value)}
+        placeholder="Password"
+        type="password"
+        value={props.password}
+      />
+      {props.mode === "register" ? (
+        <>
+          <input
+            onChange={(event) => props.onFullNameChange(event.target.value)}
+            placeholder="Full name"
+            value={props.fullName}
+          />
+          <input
+            onChange={(event) => props.onTenantNameChange(event.target.value)}
+            placeholder="Tenant"
+            value={props.tenantName}
+          />
+        </>
+      ) : null}
+      <button className="primary-button w-full" disabled={props.authLoading} type="submit">
+        {props.authLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <ShieldCheck className="h-4 w-4" />
+        )}
+        {props.mode === "register" ? "Create session" : "Start session"}
+      </button>
+      {props.authStatus ? <p className="status-copy">{props.authStatus}</p> : null}
+    </form>
+  );
+}
+
+function EmptyChat(_props: { onSuggestion: (text: string) => void }) {
+  return (
+    <div className="empty-chat">
+      <div className="empty-chat-mark">
+        <Sparkles className="h-8 w-8" />
+      </div>
+      <p className="eyebrow">Knoviq · Document Intelligence</p>
+      <h2>Ask anything about your files.</h2>
+      <p>
+        Upload a PDF or TXT in the <strong style={{ color: "var(--primary)" }}>Sources</strong>{" "}
+        panel on the right, then ask questions here. Answers are grounded in your documents with
+        citations.
+      </p>
+    </div>
+  );
+}
+
+function SourcesPanel(props: {
+  accessToken: string | undefined;
+  documentTitle: string;
+  documents: DocumentSummary[];
+  documentsLoading: boolean;
+  onDelete: (document: DocumentSummary) => Promise<void>;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onTitleChange: (value: string) => void;
+  onUpload: (event: FormEvent<HTMLFormElement>) => void;
+  selectedFile: File | null;
+  uploadStatus: string | null;
+}) {
+  return (
+    <div className="inspector-content">
+      <form className="source-upload" onSubmit={props.onUpload}>
+        <label>
+          Title
+          <input
+            onChange={(event) => props.onTitleChange(event.target.value)}
+            value={props.documentTitle}
+          />
+        </label>
+        <label className="compact-upload">
+          <Upload className="h-4 w-4" />
+          <span className="truncate">
+            {props.selectedFile ? props.selectedFile.name : "PDF or TXT"}
+          </span>
+          <input
+            accept=".txt,.text,.pdf,text/plain,application/pdf"
+            className="sr-only"
+            onChange={props.onFileChange}
+            type="file"
+          />
+        </label>
+        <button
+          className="primary-button w-full"
+          disabled={!props.accessToken || props.documentsLoading}
+          type="submit"
+        >
+          {props.documentsLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          Upload
+        </button>
+        {props.uploadStatus ? <p className="status-copy">{props.uploadStatus}</p> : null}
+      </form>
+
+      <div className="source-list">
+        {props.documents.length === 0 ? (
+          <p className="muted-copy">No documents in this tenant.</p>
+        ) : (
+          props.documents.map((document) => (
+            <div className="source-row" key={document.documentId}>
+              <FileText className="h-4 w-4 text-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{document.title}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {document.status} | {document.chunkCount} chunks
+                </p>
+              </div>
+              <button
+                className="mini-icon-button"
+                disabled={props.documentsLoading}
+                onClick={() => void props.onDelete(document)}
+                type="button"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TracePanel(props: { latestAssistant: ChatMessage | undefined; toolCalls: ToolCall[] }) {
+  return (
+    <div className="inspector-content">
+      {props.latestAssistant?.validation ? (
+        <div className="validation-panel">
+          <div className="flex items-center gap-2">
+            {props.latestAssistant.validation.status === "grounded" ? (
+              <CheckCircle2 className="h-5 w-5 text-success" />
+            ) : (
+              <CircleAlert className="h-5 w-5 text-warning" />
+            )}
+            <span>{props.latestAssistant.validation.status.replace("_", " ")}</span>
+          </div>
+          <div className="meter mt-4">
+            <span
+              style={{ width: `${Math.round(props.latestAssistant.validation.confidence * 100)}%` }}
+            />
+          </div>
+          <p className="status-copy">
+            Confidence {Math.round(props.latestAssistant.validation.confidence * 100)}%
+          </p>
+        </div>
+      ) : (
+        <p className="muted-copy">Run a chat to see validation and tool calls.</p>
+      )}
+
+      <div className="trace-list">
+        {props.toolCalls.length === 0 ? (
+          <p className="muted-copy">No tools used yet.</p>
+        ) : (
+          props.toolCalls.map((call, index) => (
+            <div className="trace-row" key={`${call.toolName}-${index}`}>
+              <span className={call.status === "succeeded" ? "status-dot ok" : "status-dot"} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{call.toolName}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {call.reason} | {call.latencyMs ?? 0}ms
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <InvoicePanel toolCalls={props.toolCalls} />
+    </div>
+  );
+}
+
+function MonitorPanel(props: {
+  loading: boolean;
+  monitor: ReturnType<typeof buildMonitorSummary>;
+  onRefresh: () => void;
+  status: string | null;
+}) {
+  return (
+    <div className="inspector-content">
+      <div className="monitor-header">
+        <div>
+          <p className="eyebrow">Observability</p>
+          <h2>Runtime monitor</h2>
+        </div>
+        <button className="mini-icon-button" onClick={props.onRefresh} type="button">
+          <RefreshCw className={props.loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+        </button>
+      </div>
+      {props.status ? <p className="status-copy">{props.status}</p> : null}
+      <div className="metric-grid">
+        <MetricTile
+          icon={<Clock3 className="h-4 w-4" />}
+          label="Avg latency"
+          value={`${props.monitor.averageLatencyMs}ms`}
+        />
+        <MetricTile
+          icon={<Gauge className="h-4 w-4" />}
+          label="Throughput"
+          value={`${props.monitor.requestCount}`}
+        />
+        <MetricTile
+          icon={<Activity className="h-4 w-4" />}
+          label="LLM requests"
+          value={`${props.monitor.llmRequests}`}
+        />
+        <MetricTile
+          icon={<Receipt className="h-4 w-4" />}
+          label="LLM cost"
+          value={`$${props.monitor.llmCostUsd}`}
+        />
+      </div>
+      <section className="monitor-section">
+        <h3>Service latency</h3>
+        {props.monitor.serviceLatency.length === 0 ? (
+          <p className="muted-copy">No latency samples yet.</p>
+        ) : (
+          props.monitor.serviceLatency.map((metric, index) => (
+            <div className="metric-row" key={`${metric.service}-${metric.metric}-${index}`}>
+              <span>{metric.service}</span>
+              <strong>{metric.average}ms</strong>
+            </div>
+          ))
+        )}
+      </section>
+      <section className="monitor-section">
+        <h3>Tool health</h3>
+        {props.monitor.toolRows.length === 0 ? (
+          <p className="muted-copy">No tool executions yet.</p>
+        ) : (
+          props.monitor.toolRows.map((row) => (
+            <div className="metric-row" key={`${row.toolName}-${row.status}`}>
+              <span>
+                {row.toolName} | {row.status}
+              </span>
+              <strong>{row.count}</strong>
+            </div>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MetricTile(props: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="metric-tile">
+      {props.icon}
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function InvoicePanel(props: { toolCalls: ToolCall[] }) {
+  const invoiceTool = props.toolCalls.find(
+    (call) => call.toolName === "document.extract_invoice_fields",
+  );
+  const output = parseInvoiceOutput(invoiceTool?.output);
+
+  if (!output) {
+    return null;
+  }
+
+  return (
+    <div className="invoice-panel">
+      <div className="flex items-center gap-2">
+        <Receipt className="h-4 w-4 text-primary" />
+        <span className="font-semibold">Invoice extraction</span>
+      </div>
+      <div className="mt-3 space-y-2">
+        {output.invoices.map((invoice, index) => (
+          <div className="invoice-row" key={`${invoice.invoiceNumber ?? "invoice"}-${index}`}>
+            <span>{invoice.vendor ?? invoice.invoiceNumber ?? `Invoice ${index + 1}`}</span>
+            <strong>
+              {output.currency} {invoice.amount.toFixed(2)}
+            </strong>
+          </div>
+        ))}
+      </div>
+      <div className="invoice-total">
+        <span>Total</span>
+        <strong>
+          {output.currency} {output.totalAmount.toFixed(2)}
+        </strong>
+      </div>
+    </div>
   );
 }
 
@@ -728,11 +1129,144 @@ async function requestJson<TResponse>(
   return data as TResponse;
 }
 
+function buildMonitorSummary(data: ObservabilityResponse | null) {
+  const serviceRows = data?.service_metric_summary?.output?.rows ?? [];
+  const llmRows = data?.llm_usage_summary?.output?.rows ?? [];
+  const toolRowsRaw = data?.tool_execution_summary?.output?.rows ?? [];
+  const requestMetrics = serviceRows.filter(
+    (row) => asString(row.metric_name) === "http.server.requests",
+  );
+  const latencyMetrics = serviceRows.filter(
+    (row) => asString(row.metric_name) === "http.server.duration",
+  );
+  const requestCount = requestMetrics.reduce((sum, row) => sum + asNumber(row.sample_count), 0);
+  const averageLatencyMs =
+    latencyMetrics.length === 0
+      ? 0
+      : Math.round(
+          latencyMetrics.reduce((sum, row) => sum + asNumber(row.average_value), 0) /
+            latencyMetrics.length,
+        );
+  const llmRequests = llmRows.reduce((sum, row) => sum + asNumber(row.request_count), 0);
+  const llmCostUsd = llmRows
+    .reduce((sum, row) => sum + asNumber(row.estimated_cost_usd), 0)
+    .toFixed(4);
+
+  return {
+    averageLatencyMs,
+    llmCostUsd,
+    llmRequests,
+    requestCount,
+    // Group by (service, metric) and average across multiple DB rows for the same pair.
+    // Multiple rows for the same service+metric arise when the query returns one row
+    // per route or time bucket. The panel shows one representative average per pair.
+    serviceLatency: (() => {
+      const grouped = new Map<
+        string,
+        { sum: number; count: number; service: string; metric: string }
+      >();
+      for (const row of latencyMetrics) {
+        const svc = asString(row.service_name);
+        const met = asString(row.metric_name);
+        const key = `${svc}||${met}`;
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.sum += asNumber(row.average_value);
+          existing.count += 1;
+        } else {
+          grouped.set(key, {
+            sum: asNumber(row.average_value),
+            count: 1,
+            service: svc,
+            metric: met,
+          });
+        }
+      }
+      return [...grouped.values()].slice(0, 6).map((entry) => ({
+        average: Math.round(entry.sum / entry.count),
+        metric: entry.metric,
+        service: entry.service,
+      }));
+    })(),
+    toolRows: toolRowsRaw.slice(0, 8).map((row) => ({
+      count: asNumber(row.count),
+      status: asString(row.status),
+      toolName: asString(row.tool_name),
+    })),
+  };
+}
+
+function parseInvoiceOutput(data: unknown): {
+  currency: string;
+  invoices: Array<{ amount: number; invoiceNumber?: string; vendor?: string }>;
+  totalAmount: number;
+} | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const record = data as Record<string, unknown>;
+
+  if (
+    typeof record.currency !== "string" ||
+    typeof record.totalAmount !== "number" ||
+    !Array.isArray(record.invoices)
+  ) {
+    return null;
+  }
+
+  return {
+    currency: record.currency,
+    invoices: record.invoices.map((item) => {
+      const invoice = item as Record<string, unknown>;
+      return {
+        amount: typeof invoice.amount === "number" ? invoice.amount : 0,
+        ...(typeof invoice.invoiceNumber === "string"
+          ? { invoiceNumber: invoice.invoiceNumber }
+          : {}),
+        ...(typeof invoice.vendor === "string" ? { vendor: invoice.vendor } : {}),
+      };
+    }),
+    totalAmount: record.totalAmount,
+  };
+}
+
+function createThread(): ChatThread {
+  const now = new Date().toISOString();
+  return {
+    createdAt: now,
+    id: crypto.randomUUID(),
+    messages: [],
+    title: "New document chat",
+    updatedAt: now,
+  };
+}
+
+function findLatestAssistant(thread: ChatThread | undefined): ChatMessage | undefined {
+  if (!thread) {
+    return undefined;
+  }
+
+  for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
+    const message = thread.messages[index];
+    if (message?.role === "assistant") {
+      return message;
+    }
+  }
+
+  return undefined;
+}
+
+function titleFromMessage(message: string): string {
+  return message.replace(/\s+/g, " ").trim().slice(0, 52) || "Document chat";
+}
+
 function extractApiMessage(data: unknown, status: number): string {
   if (isApiErrorBody(data)) {
     return (
       data.error?.message ??
       data.message ??
+      data.details ??
       data.error?.code ??
       data.code ??
       `Request failed: ${status}`
@@ -750,241 +1284,20 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function InvoicePanel({ data, toolCalls }: { data: unknown; toolCalls?: ToolCall[] }) {
-  if (data === undefined || data === null) {
-    return (
-      <div className="empty-state">
-        <Receipt className="h-5 w-5" />
-        <span>No invoice extraction yet. Ask about uploaded invoices to see results here.</span>
-      </div>
-    );
-  }
-
-  const parsed = parseInvoiceOutput(data);
-
-  if (!parsed) {
-    return (
-      <div className="empty-state">
-        <Receipt className="h-5 w-5" />
-        <span>Extraction ran but returned an unexpected format.</span>
-      </div>
-    );
-  }
-
-  const { currency, invoiceCount, invoices, period, totalAmount } = parsed;
-
-  const calcTool = toolCalls?.find(
-    (tc) => tc.toolName === "calculator.evaluate" && tc.status === "succeeded",
-  );
-  const calcResult = (calcTool?.output as { result?: number } | undefined)?.result;
-  const calcMatches = calcResult !== undefined && Math.abs(calcResult - totalAmount) < 0.01;
-
-  if (invoiceCount === 0) {
-    return (
-      <div className="empty-state">
-        <Receipt className="h-5 w-5" />
-        <span>
-          No invoices found{period ? ` for ${period}` : ""}. Upload an invoice file and ask again.
-        </span>
-      </div>
-    );
-  }
-
-  // Show all invoices the LLM returned — they are clean structured data,
-  // not regex-scraped fragments.
-  const lineItems = invoices.filter((inv) => inv.amount > 0);
-
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const fmtDate = (d: string) => {
-    try {
-      return new Date(d).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch {
-      return d;
-    }
-  };
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Receipt className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">Expense Report</span>
-        </div>
-        {period ? (
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-            {period}
-          </span>
-        ) : null}
-      </div>
-
-      {/* ── Invoice table ── */}
-      {lineItems.length > 0 ? (
-        <div className="divide-y divide-border">
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_auto] gap-2 px-4 py-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Invoice
-            </span>
-            <span className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Amount
-            </span>
-          </div>
-
-          {/* Rows */}
-          {lineItems.map((inv, i) => (
-            <div key={inv.invoiceNumber ?? i} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
-              <div className="min-w-0">
-                {/* Invoice number + vendor */}
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  {inv.invoiceNumber ? (
-                    <span className="font-mono text-xs font-semibold text-primary">
-                      {inv.invoiceNumber}
-                    </span>
-                  ) : null}
-                  {inv.vendor ? (
-                    <span className="truncate text-sm font-medium">{inv.vendor}</span>
-                  ) : null}
-                </div>
-
-                {/* Date + description + approval */}
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  {inv.invoiceDate ? (
-                    <span className="text-xs text-muted-foreground">
-                      {fmtDate(inv.invoiceDate)}
-                    </span>
-                  ) : null}
-                  {inv.description ? (
-                    <span className="text-xs text-muted-foreground">· {inv.description}</span>
-                  ) : (inv as InvoiceItem & { category?: string }).category ? (
-                    <span className="text-xs text-muted-foreground">
-                      · {(inv as InvoiceItem & { category?: string }).category}
-                    </span>
-                  ) : null}
-                  {(inv as InvoiceItem & { approvalStatus?: string }).approvalStatus ? (
-                    <span
-                      className={`text-xs font-medium ${
-                        (inv as InvoiceItem & { approvalStatus?: string }).approvalStatus
-                          ?.toLowerCase()
-                          .includes("manager")
-                          ? "text-warning"
-                          : "text-success"
-                      }`}
-                    >
-                      · {(inv as InvoiceItem & { approvalStatus?: string }).approvalStatus}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Amount */}
-              <span className="shrink-0 self-center text-right text-sm font-semibold tabular-nums">
-                {fmt(inv.amount)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        /* No clean line items — show a simple note */
-        <div className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">
-            {invoiceCount} invoice{invoiceCount !== 1 ? "s" : ""} identified in the document.
-            Line-by-line breakdown is not available for this document format.
-          </p>
-        </div>
-      )}
-
-      {/* ── Divider ── */}
-      <div className="border-t border-border" />
-
-      {/* ── Total row ── */}
-      <div className="flex items-center justify-between bg-primary/5 px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold">Total</p>
-          <p className="text-xs text-muted-foreground">
-            {invoiceCount} invoice{invoiceCount !== 1 ? "s" : ""}
-            {period ? ` · ${period}` : ""}
-            {" · "}from document
-          </p>
-        </div>
-        <span className="text-lg font-bold text-primary tabular-nums">
-          {currency} {fmt(totalAmount)}
-        </span>
-      </div>
-
-      {/* ── Calculator confirmation ── */}
-      {calcResult !== undefined ? (
-        <div className="flex items-center gap-3 border-t border-border px-4 py-2.5">
-          {calcMatches ? (
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
-          ) : (
-            <CircleAlert className="h-3.5 w-3.5 shrink-0 text-warning" />
-          )}
-          <p className="text-xs text-muted-foreground">
-            Calculator{" "}
-            {calcMatches ? (
-              <span className="font-medium text-success">confirmed</span>
-            ) : (
-              <span className="font-medium text-warning">returned a different value</span>
-            )}
-            {" — "}
-            {currency} {fmt(calcResult)}
-          </p>
-        </div>
-      ) : null}
-    </div>
-  );
+function formatTime(value: string): string {
+  return new Date(value).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function parseInvoiceOutput(data: unknown): InvoiceExtractionOutput | null {
-  if (typeof data !== "object" || data === null) return null;
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
-  const d = data as Record<string, unknown>;
-  if (
-    typeof d.currency !== "string" ||
-    typeof d.invoiceCount !== "number" ||
-    typeof d.totalAmount !== "number" ||
-    !Array.isArray(d.invoices)
-  ) {
-    return null;
-  }
-
-  const invoices: InvoiceItem[] = (d.invoices as unknown[]).map((item) => {
-    const inv = item as Record<string, unknown>;
-    const base: InvoiceItem = {
-      amount: typeof inv.amount === "number" ? inv.amount : 0,
-    };
-    if (typeof inv.approvalStatus === "string") base.approvalStatus = inv.approvalStatus;
-    if (typeof inv.category === "string") base.category = inv.category;
-    if (typeof inv.chunkId === "string") base.chunkId = inv.chunkId;
-    if (typeof inv.department === "string") base.department = inv.department;
-    if (typeof inv.description === "string") base.description = inv.description;
-    if (typeof inv.documentId === "string") base.documentId = inv.documentId;
-    if (typeof inv.documentTitle === "string") base.documentTitle = inv.documentTitle;
-    if (typeof inv.evidence === "string") base.evidence = inv.evidence;
-    if (typeof inv.invoiceDate === "string") base.invoiceDate = inv.invoiceDate;
-    if (typeof inv.invoiceNumber === "string") base.invoiceNumber = inv.invoiceNumber;
-    if (typeof inv.vendor === "string") base.vendor = inv.vendor;
-    return base;
-  });
-
-  const result: InvoiceExtractionOutput = {
-    currency: d.currency,
-    invoiceCount: d.invoiceCount,
-    invoices,
-    period: typeof d.period === "string" ? d.period : null,
-    totalAmount: d.totalAmount,
-  };
-  if (typeof d.expression === "string") result.expression = d.expression;
-  if (typeof d.skippedChunkCount === "number") result.skippedChunkCount = d.skippedChunkCount;
-
-  return result;
+function asNumber(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function fallbackHealthChecks(): HealthCheck[] {

@@ -10,22 +10,22 @@ The source code is organised as a **monorepo** (all services in one git reposito
 
 ```
 ┌────────────────────────────────────── Monorepo boundary (code only) ──────────┐
-│                                                                                │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
-│  │Auth Service  │   │ AI Gateway   │   │  Knowledge   │   │    Tool      │  │
-│  │ port 4001    │   │  port 4002   │   │   Service    │   │  Execution   │  │
-│  │              │   │              │   │  port 4003   │   │  port 4004   │  │
-│  │Own process   │   │Own process   │   │Own process   │   │Own process   │  │
-│  │Own DB pool   │   │Own DB pool   │   │Own DB pool   │   │Own DB pool   │  │
-│  │Own Docker    │   │Own Docker    │   │Own Docker    │   │Own Docker    │  │
-│  │  image       │   │  image       │   │  image       │   │  image       │  │
-│  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘  │
-│                                                                                │
+│                                                                               │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    │
+│  │Auth Service  │   │ AI Gateway   │   │  Knowledge   │   │    Tool      │    │
+│  │ port 4001    │   │  port 4002   │   │   Service    │   │  Execution   │    │
+│  │              │   │              │   │  port 4003   │   │  port 4004   │    │
+│  │Own process   │   │Own process   │   │Own process   │   │Own process   │    │
+│  │Own DB pool   │   │Own DB pool   │   │Own DB pool   │   │Own DB pool   │    │
+│  │Own Docker    │   │Own Docker    │   │Own Docker    │   │Own Docker    │    │
+│  │  image       │   │  image       │   │  image       │   │  image       │    │
+│  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘    │
+│                                                                               │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │  Shared packages  (@knoviq/cache, @knoviq/database, @knoviq/events …)  │  │
+│  │  Shared packages  (@knoviq/cache, @knoviq/database, @knoviq/events …)   │  │
 │  │  Compiled and linked at build time — zero runtime coupling              │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Each microservice satisfies the key microservice properties:
@@ -64,8 +64,8 @@ The shared packages (`@knoviq/cache`, `@knoviq/database`, etc.) are compiled lib
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Browser / Client                         │
-│                       Next.js 15  (port 3000)                    │
+│                         Browser / Client                        │
+│                       Next.js 15  (port 3000)                   │
 └──────────┬──────────────────────────────────────────┬───────────┘
            │  /api/auth/*  /api/chat  /api/documents  │
            ▼                                          ▼
@@ -83,14 +83,14 @@ The shared packages (`@knoviq/cache`, `@knoviq/database`, etc.) are compiled lib
                           │                          │
                           ▼                          ▼
              ┌────────────────────┐    ┌─────────────────────────┐
-             │  Knowledge Service │    │  Tool Execution Service  │
-             │  (port 4003)       │    │  (port 4004)             │
-             │                    │    │                          │
-             │ • PDF/TXT ingest   │◄───│ • knowledge.retrieve     │
-             │ • Hybrid chunking  │    │ • calculator.evaluate    │
-             │ • Azure embeddings │    │ • sql.query_safe         │
-             │ • BM25 + vector    │    │ • extract_invoice_fields │
-             │ • LLM reranking    │    │   (LLM-based, any format)│
+             │  Knowledge Service │    │  Tool Execution Service │
+             │  (port 4003)       │    │  (port 4004)            │
+             │                    │    │                         │
+             │ • PDF/TXT ingest   │◄───│ • knowledge.retrieve    │
+             │ • Hybrid chunking  │    │ • calculator.evaluate   │
+             │ • Azure embeddings │    │ • sql.query_safe        │
+             │ • BM25 + vector    │    │ • extract_invoice_fields│
+             │ • LLM reranking    │    │  (LLM-based, any format)│
              └────────┬───────────┘    └─────────────────────────┘
                       │
           ┌───────────┴──────────┐
@@ -275,25 +275,25 @@ User uploads PDF/TXT
         │
         ▼
   ┌─────────────────────────────────────────────────────────┐
-  │                    Knowledge Service                     │
-  │                                                          │
-  │  1. Deduplication   SHA-256 hash → reject duplicate      │
-  │  2. Storage         Save raw file to ./data/uploads/     │
-  │  3. Text extraction pdf-parse (PDF) / UTF-8 (TXT)        │
-  │  4. Hybrid chunking  ──────────────────────────────────  │
-  │     ├─ Tier 1: Structural splits                         │
-  │     │   Markdown headings, ALL-CAPS titles,              │
-  │     │   horizontal rules, 2+ blank lines                 │
-  │     ├─ Tier 2: Semantic sliding window                   │
-  │     │   Sentence-boundary detection with configurable    │
-  │     │   overlap (default 250 chars)                      │
-  │     └─ Tier 3: Keyword extraction                        │
+  │                    Knowledge Service                    │
+  │                                                         │
+  │  1. Deduplication   SHA-256 hash → reject duplicate     │
+  │  2. Storage         Save raw file to ./data/uploads/    │
+  │  3. Text extraction pdf-parse (PDF) / UTF-8 (TXT)       │
+  │  4. Hybrid chunking  ────────────────────────────────── │
+  │     ├─ Tier 1: Structural splits                        │
+  │     │   Markdown headings, ALL-CAPS titles,             │
+  │     │   horizontal rules, 2+ blank lines                │
+  │     ├─ Tier 2: Semantic sliding window                  │
+  │     │   Sentence-boundary detection with configurable   │
+  │     │   overlap (default 250 chars)                     │
+  │     └─ Tier 3: Keyword extraction                       │
   │         Top-10 TF tokens → stored in chunk metadata     │
-  │         for BM25 retrieval                               │
-  │  5. Embedding        Azure text-embedding-3-small        │
-  │     (deduplicated via content-hash cache)                │
-  │  6. Persist         document_chunks + embedding::vector  │
-  │  7. Publish         knowledge.document.uploaded → Kafka  │
+  │         for BM25 retrieval                              │
+  │  5. Embedding        Azure text-embedding-3-small       │
+  │     (deduplicated via content-hash cache)               │
+  │  6. Persist         document_chunks + embedding::vector │
+  │  7. Publish         knowledge.document.uploaded → Kafka │
   └─────────────────────────────────────────────────────────┘
 ```
 
@@ -425,7 +425,7 @@ Each chat turn runs four sequential agent phases:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      AgentRunner.run()                        │
+│                      AgentRunner.run()                       │
 │                                                              │
 │  ┌─────────────────┐                                         │
 │  │   Conversation  │  Create/resume conversation             │
@@ -434,7 +434,7 @@ Each chat turn runs four sequential agent phases:
 │           │                                                  │
 │  ┌────────▼────────┐                                         │
 │  │    Planner      │  gpt-4o-mini, temp=0                    │
-│  │    Agent        │  JSON tool plan → max 5 tool calls       │
+│  │    Agent        │  JSON tool plan → max 5 tool calls      │
 │  └────────┬────────┘                                         │
 │           │  (for each tool call)                            │
 │  ┌────────▼────────┐                                         │
@@ -445,7 +445,7 @@ Each chat turn runs four sequential agent phases:
 │           │                                                  │
 │  ┌────────▼────────┐                                         │
 │  │  Synthesizer    │  gpt-4o, temp=0.1                       │
-│  │  Agent          │  Grounded answer from chunk citations    │
+│  │  Agent          │  Grounded answer from chunk citations   │
 │  └────────┬────────┘                                         │
 │           │                                                  │
 │  ┌────────▼────────┐                                         │
@@ -717,8 +717,4 @@ Required secrets:
 - `AZURE_OPENAI_API_KEY`
 - `JWT_ACCESS_SECRET` (min 32 chars)
 - `JWT_REFRESH_SECRET` (min 32 chars)
-- # `DATABASE_URL`
 
-# knoviq-assesment
-
-> > > > > > > 447afa0399e3b576ba6282a28396a72407b0ec2b
