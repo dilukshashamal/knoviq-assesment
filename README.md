@@ -717,7 +717,3 @@ Required secrets:
 - `AZURE_OPENAI_API_KEY`
 - `JWT_ACCESS_SECRET` (min 32 chars)
 - `JWT_REFRESH_SECRET` (min 32 chars)
-<<<<<<< HEAD
-
-=======
->>>>>>> 2fddde4163a06a830d67ddd9b1c53f795c7bb4b4
