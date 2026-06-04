@@ -213,9 +213,40 @@ textarea:focus {
   padding: 0.6rem 0.65rem;
 }
 
-.thread-item {
+/* thread-item is now a div wrapper; thread-select is the clickable label area */
+.thread-select {
+  align-items: center;
   color: var(--foreground);
-  width: 100%;
+  display: flex;
+  flex: 1;
+  gap: 0.65rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.thread-delete {
+  align-items: center;
+  background: transparent;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  display: none;
+  height: 1.75rem;
+  justify-content: center;
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    background-color 160ms ease;
+  width: 1.75rem;
+}
+
+.thread-item:hover .thread-delete {
+  display: inline-flex;
+  opacity: 1;
+}
+
+.thread-delete:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
 }
 
 .thread-item:hover,
@@ -259,6 +290,18 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field-hint {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  padding-left: 0.25rem;
 }
 
 .auth-form input,

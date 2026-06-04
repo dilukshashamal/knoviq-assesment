@@ -135,20 +135,25 @@ interface ApiErrorBody {
 }
 
 const SESSION_STORAGE_KEY = "knoviq.session";
-const THREAD_STORAGE_KEY = "knoviq.chatThreads";
-const defaultQuestion = "Summarize this document and list the most important policy points.";
+
+/** Returns a localStorage key scoped to the specific user so chat threads
+ *  from one account are never visible to another account on the same device. */
+function threadStorageKey(userId: string): string {
+  return `knoviq.chatThreads.${userId}`;
+}
+const defaultQuestion = "";
 
 export default function HomePage() {
   const [mode, setMode] = useState<"register" | "login">("register");
-  const [email, setEmail] = useState("operator@example.com");
-  const [password, setPassword] = useState("Password12345!");
-  const [fullName, setFullName] = useState("Knoviq Operator");
-  const [tenantName, setTenantName] = useState("Knoviq Workspace");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [tenantName, setTenantName] = useState("");
   const [session, setSession] = useState<AuthResponse | null>(null);
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [documentTitle, setDocumentTitle] = useState("Knowledge Assistant Policy");
+  const [documentTitle, setDocumentTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -184,30 +189,30 @@ export default function HomePage() {
 
   useEffect(() => {
     const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    const storedThreads = window.localStorage.getItem(THREAD_STORAGE_KEY);
 
     if (storedSession) {
       try {
         const parsed = JSON.parse(storedSession) as AuthResponse;
         setSession(parsed);
         setEmail(parsed.user.email);
-      } catch {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
-      }
-    }
 
-    if (storedThreads) {
-      try {
-        const parsed = JSON.parse(storedThreads) as {
-          activeThreadId: string;
-          threads: ChatThread[];
-        };
-
-        if (parsed.threads.length > 0) {
-          setThreadState(parsed);
+        // Load this user's threads from their scoped key
+        const storedThreads = window.localStorage.getItem(threadStorageKey(parsed.user.userId));
+        if (storedThreads) {
+          try {
+            const parsedThreads = JSON.parse(storedThreads) as {
+              activeThreadId: string;
+              threads: ChatThread[];
+            };
+            if (parsedThreads.threads.length > 0) {
+              setThreadState(parsedThreads);
+            }
+          } catch {
+            window.localStorage.removeItem(threadStorageKey(parsed.user.userId));
+          }
         }
       } catch {
-        window.localStorage.removeItem(THREAD_STORAGE_KEY);
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
       }
     }
 
@@ -215,10 +220,13 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (storageReady) {
-      window.localStorage.setItem(THREAD_STORAGE_KEY, JSON.stringify(threadState));
+    if (storageReady && session) {
+      window.localStorage.setItem(
+        threadStorageKey(session.user.userId),
+        JSON.stringify(threadState),
+      );
     }
-  }, [storageReady, threadState]);
+  }, [storageReady, session, threadState]);
 
   useEffect(() => {
     void refreshHealth();
@@ -263,6 +271,25 @@ export default function HomePage() {
 
       setSession(response);
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(response));
+
+      // Reset threads to a blank slate, then load this user's saved threads
+      const freshThread = createThread();
+      const defaultState = { activeThreadId: freshThread.id, threads: [freshThread] };
+      const savedThreads = window.localStorage.getItem(threadStorageKey(response.user.userId));
+      if (savedThreads) {
+        try {
+          const parsed = JSON.parse(savedThreads) as {
+            activeThreadId: string;
+            threads: ChatThread[];
+          };
+          setThreadState(parsed.threads.length > 0 ? parsed : defaultState);
+        } catch {
+          setThreadState(defaultState);
+        }
+      } else {
+        setThreadState(defaultState);
+      }
+
       setAuthStatus(`Signed in to ${response.user.tenantName}`);
     } catch (error) {
       setAuthStatus(getErrorMessage(error));
@@ -436,7 +463,28 @@ export default function HomePage() {
     setChatStatus(null);
   }
 
+  function handleDeleteThread(threadId: string) {
+    setThreadState((current) => {
+      const remaining = current.threads.filter((t) => t.id !== threadId);
+
+      // Always keep at least one thread
+      if (remaining.length === 0) {
+        const fresh = createThread();
+        return { activeThreadId: fresh.id, threads: [fresh] };
+      }
+
+      // If we deleted the active thread, activate the first remaining one
+      const nextActiveId =
+        current.activeThreadId === threadId ? (remaining[0]?.id ?? "") : current.activeThreadId;
+
+      return { activeThreadId: nextActiveId, threads: remaining };
+    });
+  }
+
   function handleSignOut() {
+    // Clear this user's threads from state before wiping the session
+    const freshThread = createThread();
+    setThreadState({ activeThreadId: freshThread.id, threads: [freshThread] });
     setSession(null);
     setDocuments([]);
     setObservability(null);
@@ -539,19 +587,34 @@ export default function HomePage() {
           </div>
           <div className="thread-list">
             {threadState.threads.map((thread) => (
-              <button
+              <div
                 className={
                   thread.id === threadState.activeThreadId ? "thread-item active" : "thread-item"
                 }
                 key={thread.id}
-                onClick={() =>
-                  setThreadState((current) => ({ ...current, activeThreadId: thread.id }))
-                }
-                type="button"
               >
-                <MessageSquarePlus className="h-4 w-4" />
-                <span className="min-w-0 flex-1 truncate text-left">{thread.title}</span>
-              </button>
+                <button
+                  className="thread-select"
+                  onClick={() =>
+                    setThreadState((current) => ({
+                      ...current,
+                      activeThreadId: thread.id,
+                    }))
+                  }
+                  type="button"
+                >
+                  <MessageSquarePlus className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate text-left">{thread.title}</span>
+                </button>
+                <button
+                  className="thread-delete"
+                  onClick={() => handleDeleteThread(thread.id)}
+                  title="Delete chat"
+                  type="button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             ))}
           </div>
         </section>
@@ -815,27 +878,36 @@ function AuthForm(props: {
         </button>
       </div>
       <input
+        autoComplete="email"
         onChange={(event) => props.onEmailChange(event.target.value)}
-        placeholder="Email"
+        placeholder="Email address"
+        required
         type="email"
         value={props.email}
       />
-      <input
-        onChange={(event) => props.onPasswordChange(event.target.value)}
-        placeholder="Password"
-        type="password"
-        value={props.password}
-      />
+      <div className="auth-field">
+        <input
+          autoComplete={props.mode === "register" ? "new-password" : "current-password"}
+          minLength={12}
+          onChange={(event) => props.onPasswordChange(event.target.value)}
+          placeholder="Password"
+          required
+          type="password"
+          value={props.password}
+        />
+        {props.mode === "register" ? <p className="field-hint">Minimum 12 characters</p> : null}
+      </div>
       {props.mode === "register" ? (
         <>
           <input
+            autoComplete="name"
             onChange={(event) => props.onFullNameChange(event.target.value)}
             placeholder="Full name"
             value={props.fullName}
           />
           <input
             onChange={(event) => props.onTenantNameChange(event.target.value)}
-            placeholder="Tenant"
+            placeholder="Workspace name"
             value={props.tenantName}
           />
         </>
@@ -846,7 +918,7 @@ function AuthForm(props: {
         ) : (
           <ShieldCheck className="h-4 w-4" />
         )}
-        {props.mode === "register" ? "Create session" : "Start session"}
+        {props.mode === "register" ? "Create account" : "Sign in"}
       </button>
       {props.authStatus ? <p className="status-copy">{props.authStatus}</p> : null}
     </form>
