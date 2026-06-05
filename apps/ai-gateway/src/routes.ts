@@ -94,6 +94,30 @@ export function registerChatRoutes(
     }
   });
 
+  // ── Conversation history ────────────────────────────────────────────────────
+
+  app.get("/conversations", { preHandler: [app.authenticate] }, async (request) => {
+    const principal = requirePrincipal(request);
+    return agentRunner.listConversations({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+    });
+  });
+
+  app.get(
+    "/conversations/:conversationId/messages",
+    { preHandler: [app.authenticate] },
+    async (request) => {
+      const principal = requirePrincipal(request);
+      const { conversationId } = request.params as { conversationId: string };
+      return agentRunner.getConversationMessages({
+        conversationId,
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+      });
+    },
+  );
+
   app.route({
     handler: async (_request, reply) =>
       reply.code(426).send({

@@ -18,6 +18,39 @@ interface ConversationRow extends QueryResultRow {
 export class AiGatewayRepository {
   constructor(private readonly pool: Pool) {}
 
+  async listConversations(input: {
+    tenantId: string;
+    userId: string;
+  }): Promise<{ conversations: Array<{ id: string; title: string | null; lastMessageAt: string; createdAt: string }> }> {
+    const result = await this.pool.query<{
+      id: string;
+      title: string | null;
+      last_message_at: Date;
+      created_at: Date;
+    }>(
+      `
+        SELECT id, title, last_message_at, created_at
+        FROM knoviq.conversations
+        WHERE tenant_id = $1
+          AND user_id = $2
+          AND deleted_at IS NULL
+          AND status = 'active'
+        ORDER BY last_message_at DESC
+        LIMIT 50
+      `,
+      [input.tenantId, input.userId],
+    );
+
+    return {
+      conversations: result.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        lastMessageAt: row.last_message_at.toISOString(),
+        createdAt: row.created_at.toISOString(),
+      })),
+    };
+  }
+
   async ensureMembership(tenantId: string, userId: string): Promise<void> {
     const result = await this.pool.query(
       `

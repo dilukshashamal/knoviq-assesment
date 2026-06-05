@@ -39,6 +39,27 @@ export class AgentRunner {
     private readonly eventPublisher: EventPublisher,
   ) {}
 
+  async listConversations(input: {
+    tenantId: string;
+    userId: string;
+  }): Promise<{ conversations: Array<{ id: string; title: string | null; lastMessageAt: string; createdAt: string }> }> {
+    return this.repository.listConversations(input);
+  }
+
+  async getConversationMessages(input: {
+    conversationId: string;
+    tenantId: string;
+    userId: string;
+  }): Promise<{ messages: Array<{ id: string; role: string; content: string; createdAt: string }> }> {
+    await this.repository.assertConversationAccess(input);
+    const messages = await this.repository.getRecentMessages({
+      conversationId: input.conversationId,
+      limit: 100,
+      tenantId: input.tenantId,
+    });
+    return { messages };
+  }
+
   async run(input: RunAgentInput): Promise<AgentRunResult> {
     await this.repository.ensureMembership(input.tenantId, input.userId);
 
