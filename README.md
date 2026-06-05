@@ -25,6 +25,8 @@ frontend — all in one monorepo.
 
 ## 1. Architecture Overview
 
+![Knoviq architecture diagram](images/diagram.png)
+
 ### Service Map
 
 ```
