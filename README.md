@@ -1,4 +1,4 @@
-# Knoviq — Enterprise AI Knowledge Assistant
+# Knoviq - Enterprise AI Knowledge Assistant
 
 Knoviq is a production-ready, multi-tenant AI knowledge assistant. Users upload PDF and TXT documents into a private knowledge base, then chat with an AI that retrieves, cites, and synthesises answers strictly from those documents. Five independent microservices handle authentication, AI orchestration, document knowledge management, tool execution, and the web frontend — all living in one monorepo for developer convenience.
 
@@ -43,15 +43,15 @@ Knoviq is a production-ready, multi-tenant AI knowledge assistant. Users upload 
                             ┌──────────────────┤
                             │                  │
                ┌────────────▼──────┐  ┌────────▼──────────────┐
-               │ Knowledge Service │  │ Tool Execution Service │
-               │ port 4003         │  │ port 4004              │
-               │                   │◄─│                        │
-               │ PDF/TXT ingest    │  │ knowledge.retrieve     │
-               │ Hybrid chunking   │  │ calculator.evaluate    │
-               │ Azure embeddings  │  │ sql.query_safe         │
-               │ BM25 + vector     │  │ extract_invoice_fields │
-               │ LLM reranking     │  │                        │
-               └─────────┬─────────┘  └────────────────────────┘
+               │ Knowledge Service │  │ Tool Execution Service│
+               │ port 4003         │  │ port 4004             │
+               │                   │◄─│                       │
+               │ PDF/TXT ingest    │  │ knowledge.retrieve    │
+               │ Hybrid chunking   │  │ calculator.evaluate   │
+               │ Azure embeddings  │  │ sql.query_safe        │
+               │ BM25 + vector     │  │ extract_invoice_fields│
+               │ LLM reranking     │  │                       │
+               └─────────┬─────────┘  └───────────────────────┘
                          │
              ┌───────────┴──────────┐
              ▼                      ▼
@@ -193,8 +193,8 @@ Copy `.env.example` to `.env` and fill in the required values. All config is val
 | `AZURE_OPENAI_ENDPOINT`                    | Your Azure OpenAI resource endpoint URL                                                |
 | `AZURE_OPENAI_API_KEY`                     | API key for the resource                                                               |
 | `AZURE_OPENAI_API_VERSION`                 | API version, default `2025-04-01-preview`                                              |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`        | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction    |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING`   | Reasoning model (e.g. `gpt-4o`) — answer synthesis                                    |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`        | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction     |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING`   | Reasoning model (e.g. `gpt-4o`) — answer synthesis                                     |
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`        | Embedding model (e.g. `text-embedding-3-small`)                                        |
 | `AZURE_OPENAI_EMBEDDING_DIMENSIONS`        | Embedding dimensions, default `1536`                                                   |
 
@@ -227,7 +227,7 @@ Set `KNOWLEDGE_EMBEDDING_PROVIDER=local` and `AI_GATEWAY_MODEL_PROVIDER=local` t
 | `DB_POOL_MAX`   | `10`                     | Max pg connections per service process |
 | `REDIS_URL`     | `redis://localhost:6379` | Redis connection URL                   |
 | `REDIS_ENABLED` | `true`                   | Set `false` to disable caching         |
-| `KAFKA_ENABLED` | `true`                   | Set `false` to disable event publishing |
+| `KAFKA_ENABLED` | `true`                   | Set `false` to disable event publishing|
 | `KAFKA_BROKERS` | `127.0.0.1:29092`        | Comma-separated Kafka broker addresses |
 
 ### LLM cost controls
@@ -334,7 +334,7 @@ POST /chat  { message, conversationId? }
   ┌─────────────────────────────────────────────────────────────┐
   │                     AgentRunner.run()                       │
   │                                                             │
-  │  Phase 1 — PLANNER  (gpt-4o-mini, temp=0)                  │
+  │  Phase 1 — PLANNER  (gpt-4o-mini, temp=0)                   │
   │  ─────────────────────────────────────────────────          │
   │  Input:  last 12 messages of conversation history           │
   │          tool definitions (fetched from Tool Execution      │
@@ -360,14 +360,14 @@ POST /chat  { message, conversationId? }
   │    invoice workflow auto-chains:                            │
   │    knowledge.retrieve → extract_invoice_fields → calculator │
   │                                                             │
-  │  Phase 3 — SYNTHESIZER  (gpt-4o, temp=0.1)                 │
+  │  Phase 3 — SYNTHESIZER  (gpt-4o, temp=0.1)                  │
   │  ─────────────────────────────────────────────────          │
   │  Input:  structured chunk citations (RRF scores omitted     │
   │          to prevent LLM misreading 0.001 as "irrelevant")   │
   │          other tool outputs                                 │
   │  Output: grounded answer with source citations              │
   │                                                             │
-  │  Phase 4 — VALIDATOR  (gpt-4o-mini, temp=0)                │
+  │  Phase 4 — VALIDATOR  (gpt-4o-mini, temp=0)                 │
   │  ─────────────────────────────────────────────────          │
   │  Scores answer: grounded | partially_grounded | unsupported │
   │  Guardrail logic:                                           │
@@ -389,7 +389,7 @@ POST /chat  { message, conversationId? }
 | Tool name                          | Where it runs                            | When the planner selects it                       |
 | ---------------------------------- | ---------------------------------------- | ------------------------------------------------- |
 | `knowledge.retrieve`               | Knowledge Service `/search`              | All factual, informational, policy questions      |
-| `calculator.evaluate`              | In-process recursive descent parser     | Numeric expressions; invoice total verification  |
+| `calculator.evaluate`              | In-process recursive descent parser      | Numeric expressions; invoice total verification   |
 | `sql.query_safe`                   | PostgreSQL (read-only, allowlisted ops)  | Usage metrics, document counts, cost reports      |
 | `document.extract_invoice_fields`  | Azure OpenAI gpt-4o-mini                 | Invoice summarisation workflows                   |
 
