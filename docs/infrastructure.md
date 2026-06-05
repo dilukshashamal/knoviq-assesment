@@ -53,10 +53,10 @@ operations degrade gracefully to cache misses. PostgreSQL remains authoritative.
 
 **What is cached**
 
-| Cache                    | Key scope                                    | TTL  |
-| ------------------------ | -------------------------------------------- | ---- |
-| Knowledge search results | `(tenantId, userId, query, filters)` hash    | 60s  |
-| Tool definitions         | Tool service URL                             | 300s |
+| Cache                    | Key scope                                 | TTL  |
+| ------------------------ | ----------------------------------------- | ---- |
+| Knowledge search results | `(tenantId, userId, query, filters)` hash | 60s  |
+| Tool definitions         | Tool service URL                          | 300s |
 
 **Cache client improvements**
 
@@ -202,12 +202,12 @@ substring. This ensures `gpt-4o` synthesis calls are priced at the correct rate
 
 Known models and their rates (June 2026):
 
-| Model                     | Prompt /1k | Completion /1k |
-| ------------------------- | ---------- | -------------- |
-| `gpt-4o-mini`             | $0.00015   | $0.00060       |
-| `gpt-4o`                  | $0.00250   | $0.01000       |
-| `text-embedding-3-small`  | $0.00002   | $0             |
-| `text-embedding-3-large`  | $0.00013   | $0             |
+| Model                    | Prompt /1k | Completion /1k |
+| ------------------------ | ---------- | -------------- |
+| `gpt-4o-mini`            | $0.00015   | $0.00060       |
+| `gpt-4o`                 | $0.00250   | $0.01000       |
+| `text-embedding-3-small` | $0.00002   | $0             |
+| `text-embedding-3-large` | $0.00013   | $0             |
 
 The env vars `LLM_PROMPT_COST_PER_1K_TOKENS` and `LLM_COMPLETION_COST_PER_1K_TOKENS` are a
 fallback for unknown deployments not in the built-in table. Set both to `0` to disable cost

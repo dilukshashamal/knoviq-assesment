@@ -187,17 +187,17 @@ excluded to avoid self-referential race conditions.
 
 Approved operations:
 
-| Operation                  | What it returns                                     |
-| -------------------------- | --------------------------------------------------- |
-| `document_count`           | Document count by status                            |
-| `list_documents`           | Recent documents with metadata                      |
-| `llm_usage_summary`        | Token counts and cost by model and purpose          |
-| `tool_execution_summary`   | Tool call counts and latency by tool and status     |
-| `recent_tool_executions`   | Latest tool calls with status and latency           |
-| `service_metric_summary`   | Request counts and latency histograms by service    |
-| `answer_validation_summary`| Answer counts by validation status and confidence   |
-| `answer_quality_incidents` | Non-grounded answers with full trace for review     |
-| `answer_quality_trend`     | Daily time series of validation status over 30 days |
+| Operation                   | What it returns                                     |
+| --------------------------- | --------------------------------------------------- |
+| `document_count`            | Document count by status                            |
+| `list_documents`            | Recent documents with metadata                      |
+| `llm_usage_summary`         | Token counts and cost by model and purpose          |
+| `tool_execution_summary`    | Tool call counts and latency by tool and status     |
+| `recent_tool_executions`    | Latest tool calls with status and latency           |
+| `service_metric_summary`    | Request counts and latency histograms by service    |
+| `answer_validation_summary` | Answer counts by validation status and confidence   |
+| `answer_quality_incidents`  | Non-grounded answers with full trace for review     |
+| `answer_quality_trend`      | Daily time series of validation status over 30 days |
 
 #### `document.extract_invoice_fields`
 
@@ -225,16 +225,16 @@ requests to backend services while forwarding the user's JWT.
 
 ### API routes
 
-| Method   | Path                        | Proxies to                        |
-| -------- | --------------------------- | --------------------------------- |
-| `POST`   | `/api/auth/register`        | Auth Service `/auth/register`     |
-| `POST`   | `/api/auth/login`           | Auth Service `/auth/login`        |
-| `POST`   | `/api/chat`                 | AI Gateway `/chat`                |
-| `POST`   | `/api/documents`            | Knowledge Service `/documents`    |
-| `GET`    | `/api/documents`            | Knowledge Service `/documents`    |
-| `DELETE` | `/api/documents/:id`        | Knowledge Service `/documents/:id`|
-| `GET`    | `/api/health`               | All four backend health endpoints |
-| `GET`    | `/api/observability`        | Tool Execution Service (7 SQL ops)|
+| Method   | Path                 | Proxies to                         |
+| -------- | -------------------- | ---------------------------------- |
+| `POST`   | `/api/auth/register` | Auth Service `/auth/register`      |
+| `POST`   | `/api/auth/login`    | Auth Service `/auth/login`         |
+| `POST`   | `/api/chat`          | AI Gateway `/chat`                 |
+| `POST`   | `/api/documents`     | Knowledge Service `/documents`     |
+| `GET`    | `/api/documents`     | Knowledge Service `/documents`     |
+| `DELETE` | `/api/documents/:id` | Knowledge Service `/documents/:id` |
+| `GET`    | `/api/health`        | All four backend health endpoints  |
+| `GET`    | `/api/observability` | Tool Execution Service (7 SQL ops) |
 
 ### Admin console
 

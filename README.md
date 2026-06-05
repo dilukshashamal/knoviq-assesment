@@ -25,7 +25,7 @@ Knoviq is a production-ready, multi-tenant AI knowledge assistant. Users upload 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Browser / Client                          │
-│                    Next.js 15  (port 3000)                       │
+│                    Next.js 15  (port 3000)                      │
 └────────────────┬──────────────────────────────┬─────────────────┘
                  │  /api/auth/*                  │  /api/chat
                  │  /api/documents               │
@@ -43,15 +43,15 @@ Knoviq is a production-ready, multi-tenant AI knowledge assistant. Users upload 
                             ┌──────────────────┤
                             │                  │
                ┌────────────▼──────┐  ┌────────▼──────────────┐
-               │ Knowledge Service │  │ Tool Execution Service │
-               │ port 4003         │  │ port 4004              │
-               │                   │◄─│                        │
-               │ PDF/TXT ingest    │  │ knowledge.retrieve     │
-               │ Hybrid chunking   │  │ calculator.evaluate    │
-               │ Azure embeddings  │  │ sql.query_safe         │
-               │ BM25 + vector     │  │ extract_invoice_fields │
-               │ LLM reranking     │  │                        │
-               └─────────┬─────────┘  └────────────────────────┘
+               │ Knowledge Service │  │ Tool Execution Service│
+               │ port 4003         │  │ port 4004             │
+               │                   │◄─│                       │
+               │ PDF/TXT ingest    │  │ knowledge.retrieve    │
+               │ Hybrid chunking   │  │ calculator.evaluate   │
+               │ Azure embeddings  │  │ sql.query_safe        │
+               │ BM25 + vector     │  │ extract_invoice_fields│
+               │ LLM reranking     │  │                       │
+               └─────────┬─────────┘  └───────────────────────┘
                          │
              ┌───────────┴──────────┐
              ▼                      ▼
@@ -334,7 +334,7 @@ POST /chat  { message, conversationId? }
   ┌─────────────────────────────────────────────────────────────┐
   │                     AgentRunner.run()                       │
   │                                                             │
-  │  Phase 1 — PLANNER  (gpt-4o-mini, temp=0)                  │
+  │  Phase 1 — PLANNER  (gpt-4o-mini, temp=0)                   │
   │  ─────────────────────────────────────────────────          │
   │  Input:  last 12 messages of conversation history           │
   │          tool definitions (fetched from Tool Execution      │
@@ -360,14 +360,14 @@ POST /chat  { message, conversationId? }
   │    invoice workflow auto-chains:                            │
   │    knowledge.retrieve → extract_invoice_fields → calculator │
   │                                                             │
-  │  Phase 3 — SYNTHESIZER  (gpt-4o, temp=0.1)                 │
+  │  Phase 3 — SYNTHESIZER  (gpt-4o, temp=0.1)                  │
   │  ─────────────────────────────────────────────────          │
   │  Input:  structured chunk citations (RRF scores omitted     │
   │          to prevent LLM misreading 0.001 as "irrelevant")   │
   │          other tool outputs                                 │
   │  Output: grounded answer with source citations              │
   │                                                             │
-  │  Phase 4 — VALIDATOR  (gpt-4o-mini, temp=0)                │
+  │  Phase 4 — VALIDATOR  (gpt-4o-mini, temp=0)                 │
   │  ─────────────────────────────────────────────────          │
   │  Scores answer: grounded | partially_grounded | unsupported │
   │  Guardrail logic:                                           │
@@ -419,7 +419,7 @@ All four backend services hold no in-process session state. Conversation memory,
 
 - **pgvector HNSW index** on `document_chunks.embedding` gives approximate nearest-neighbour search at sub-millisecond latency up to millions of vectors. HNSW does not require periodic re-indexing, unlike IVFFlat.
 - **Embedding cache** (`knoviq.embedding_cache`) deduplicates Azure API calls by content hash. Identical chunks across documents never re-embed.
-- **Connection pooling** — `pg.Pool` with `DB_POOL_MAX` per service instance. Increase per replica in production.
+- **Connection pooling** - `pg.Pool` with `DB_POOL_MAX` per service instance. Increase per replica in production.
 
 ### Caching
 
@@ -429,7 +429,7 @@ All four backend services hold no in-process session state. Conversation memory,
 
 ### Kafka events
 
-All domain events (`knowledge.document.uploaded`, `conversation.created`, `agent.run.completed`, `llm.usage.recorded`) are published to Kafka after the PostgreSQL write commits. Downstream consumers (analytics, audit, billing) can process events without coupling to the request path. If `KAFKA_ENABLED=false`, a `DisabledEventPublisher` silently drops all publishes — the user-facing response path is unaffected.
+All domain events (`knowledge.document.uploaded`, `conversation.created`, `agent.run.completed`, `llm.usage.recorded`) are published to Kafka after the PostgreSQL write commits. Downstream consumers (analytics, audit, billing) can process events without coupling to the request path. If `KAFKA_ENABLED=false`, a `DisabledEventPublisher` silently drops all publishes - the user-facing response path is unaffected.
 
 ### LLM cost controls
 
@@ -473,9 +473,9 @@ Five independently deployed services, all source in one git repository with Turb
 
 Embeddings stored in `document_chunks.embedding::vector` using the pgvector extension, not a separate service like Pinecone or Qdrant.
 
-**Why:** No additional infrastructure. Full SQL joins between vector search and relational data — tenant isolation, visibility filters, and document status checks happen in a single query. Transactional consistency: a document is either fully ingested with all chunks and vectors, or rolled back.
+**Why:** No additional infrastructure. Full SQL joins between vector search and relational data - tenant isolation, visibility filters, and document status checks happen in a single query. Transactional consistency: a document is either fully ingested with all chunks and vectors, or rolled back.
 
-**Tradeoff:** pgvector's HNSW index is less mature than purpose-built vector databases at extreme scale (100M+ vectors). The search layer is isolated to `KnowledgeRepository.searchChunks()` — migrating to a dedicated vector store is a single-class change if scale eventually demands it.
+**Tradeoff:** pgvector's HNSW index is less mature than purpose-built vector databases at extreme scale (100M+ vectors). The search layer is isolated to `KnowledgeRepository.searchChunks()` - migrating to a dedicated vector store is a single-class change if scale eventually demands it.
 
 ---
 
@@ -483,9 +483,9 @@ Embeddings stored in `document_chunks.embedding::vector` using the pgvector exte
 
 Both PostgreSQL `tsvector` keyword search and `pgvector` cosine similarity run in parallel, fused with RRF.
 
-**Why:** Pure vector search misses exact keyword matches (invoice numbers, names, dates, product codes). Pure BM25 misses semantic similarity. RRF is rank-only — it avoids the score-incompatibility problem that breaks naively-weighted score fusion. BM25 is free: it uses PostgreSQL's built-in full-text search with no additional infrastructure.
+**Why:** Pure vector search misses exact keyword matches (invoice numbers, names, dates, product codes). Pure BM25 misses semantic similarity. RRF is rank-only - it avoids the score-incompatibility problem that breaks naively-weighted score fusion. BM25 is free: it uses PostgreSQL's built-in full-text search with no additional infrastructure.
 
-**Tradeoff:** Two database queries per search instead of one. In practice the overhead is 5–10ms — negligible compared to the 300–800ms LLM calls that follow.
+**Tradeoff:** Two database queries per search instead of one. In practice the overhead is 5–10ms - negligible compared to the 300–800ms LLM calls that follow.
 
 ---
 
@@ -501,11 +501,11 @@ After RRF retrieval, `gpt-4o-mini` scores each candidate chunk 0–10 for releva
 
 ### LLM-based invoice extraction over regex
 
-`gpt-4o-mini` extracts structured invoice fields (number, vendor, date, amount, currency) from any document format — expense tables, labeled PDFs, receipts, purchase orders, multi-currency reports.
+`gpt-4o-mini` extracts structured invoice fields (number, vendor, date, amount, currency) from any document format - expense tables, labeled PDFs, receipts, purchase orders, multi-currency reports.
 
 **Why:** Regex works only for one specific document layout. Real-world invoices come in dozens of formats. An LLM handles all formats without format-specific code. The LLM is instructed to extract only values explicitly present in the text and to use the document's own verified grand-total line as the authoritative figure.
 
-**Tradeoff:** Adds one LLM call per invoice extraction (~300ms). Falls back gracefully to a regex grand-total extractor if Azure is unavailable — the pipeline never hard-fails.
+**Tradeoff:** Adds one LLM call per invoice extraction (~300ms). Falls back gracefully to a regex grand-total extractor if Azure is unavailable - the pipeline never hard-fails.
 
 ---
 
@@ -523,7 +523,7 @@ When `knowledge.retrieve` returned real chunks, the answer passes through even i
 
 Short-lived JWTs (15 min) verified locally in each service via shared `JWT_ACCESS_SECRET`. Opaque refresh tokens stored as HMAC-SHA256 hashes in PostgreSQL with rotation on every use.
 
-**Why:** No network hop to Auth on every request — services verify tokens locally. Refresh rotation limits the replay window for stolen tokens. Logout is immediate — the hash is deleted from PostgreSQL.
+**Why:** No network hop to Auth on every request - services verify tokens locally. Refresh rotation limits the replay window for stolen tokens. Logout is immediate - the hash is deleted from PostgreSQL.
 
 **Tradeoff:** All services share `JWT_ACCESS_SECRET`. Rotating it requires a coordinated restart of all services. For production hardening, replace with asymmetric signing: distribute the public key to each service and keep the private key only in the Auth Service.
 
