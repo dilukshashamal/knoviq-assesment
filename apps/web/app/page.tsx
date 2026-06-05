@@ -707,7 +707,7 @@ function StartWorkspace(props: { accessToken: string | undefined; documents: Doc
         {!props.accessToken
           ? "Sign in using the panel on the left to get started."
           : docCount > 0
-            ? `${docCount} document${docCount !== 1 ? "s" : ""} ready. Type a question below — answers are grounded in your documents with citations.`
+            ? `${docCount} document${docCount !== 1 ? "s" : ""} ready. Type a question below - answers are grounded in your documents with citations.`
             : "Upload a PDF or TXT in the Sources panel on the right, then ask a question here."}
       </p>
     </div>

@@ -19,14 +19,14 @@ const KnowledgeSettingsSchema = z.object({
     .positive()
     .default(10 * 1024 * 1024),
   // How many candidates to surface before reranking (should be > searchLimit)
-  KNOWLEDGE_RERANK_CANDIDATES: z.coerce.number().int().positive().max(40).default(20),
+  KNOWLEDGE_RERANK_CANDIDATES: z.coerce.number().int().positive().max(40).default(24),
   // Set to false to skip LLM reranking (faster but lower precision)
   KNOWLEDGE_RERANK_ENABLED: z
     .string()
     .default("true")
     .transform((v) => v !== "false"),
-  KNOWLEDGE_SEARCH_LIMIT: z.coerce.number().int().positive().max(20).default(5),
-  KNOWLEDGE_SEARCH_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.3),
+  KNOWLEDGE_SEARCH_LIMIT: z.coerce.number().int().positive().max(20).default(8),
+  KNOWLEDGE_SEARCH_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.2),
   KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(60),
   KNOWLEDGE_UPLOAD_DIR: z.string().min(1).default("./data/uploads"),
 });
