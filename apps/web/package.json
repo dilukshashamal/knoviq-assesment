@@ -8,7 +8,7 @@
     "clean": "next clean || node -e \"console.log('No Next clean command available')\"",
     "dev": "next dev --turbopack -p 3000",
     "lint": "eslint .",
-    "test": "node -e \"console.log('No tests yet for web')\"",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -28,6 +28,7 @@
     "@tailwindcss/postcss": "^4.1.8",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "tailwindcss": "^4.1.8"
+    "tailwindcss": "^4.1.8",
+    "vitest": "2.0.0"
   }
 }

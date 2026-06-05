@@ -16,9 +16,10 @@ services:
       - ./infra/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knoviq} -d ${POSTGRES_DB:-knoviq}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:8-alpine
@@ -31,9 +32,10 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 5s
 
   kafka:
     image: apache/kafka:4.3.0
@@ -57,49 +59,16 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
       - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   # ── Application services (profile: app) ────────────────────────────────────
   # Start with: docker compose --profile app up -d
   # Or together with infra: docker compose --profile app up -d
-
-  web:
-    profiles: ["app"]
-    image: knoviq/web:0.1.0
-    container_name: knoviq-web
-    build:
-      context: .
-      dockerfile: infra/docker/web.Dockerfile
-    restart: unless-stopped
-    ports:
-      - "${WEB_PORT:-3000}:3000"
-    env_file: .env
-    environment:
-      HOSTNAME: "0.0.0.0"
-      PORT: "3000"
-      AUTH_SERVICE_URL: http://auth-service:4001
-      AI_GATEWAY_URL: http://ai-gateway:4002
-      KNOWLEDGE_SERVICE_URL: http://knowledge-service:4003
-      TOOL_EXECUTION_SERVICE_URL: http://tool-execution-service:4004
-    depends_on:
-      auth-service:
-        condition: service_healthy
-      ai-gateway:
-        condition: service_healthy
-      knowledge-service:
-        condition: service_healthy
-      tool-execution-service:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
 
   auth-service:
     profiles: ["app"]
@@ -125,17 +94,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4001/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
-        ]
-      interval: 15s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 15s
 
   knowledge-service:
     profiles: ["app"]
@@ -163,17 +129,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4003/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
-        ]
-      interval: 15s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 15s
 
   tool-execution-service:
     profiles: ["app"]
@@ -197,19 +160,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
       knowledge-service:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4004/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
-        ]
-      interval: 15s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4004/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 15s
 
   ai-gateway:
     profiles: ["app"]
@@ -236,19 +196,48 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
       tool-execution-service:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4002/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
-        ]
-      interval: 15s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 15s
+
+  # web starts as soon as auth-service is healthy.
+  # The other three backends (ai-gateway, knowledge, tools) are called lazily
+  # on user action — there's no benefit waiting for them at container startup.
+  # This cuts cold-start time by ~45-60 seconds.
+  web:
+    profiles: ["app"]
+    image: knoviq/web:0.1.0
+    container_name: knoviq-web
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      AUTH_SERVICE_URL: http://auth-service:4001
+      AI_GATEWAY_URL: http://ai-gateway:4002
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:4003
+      TOOL_EXECUTION_SERVICE_URL: http://tool-execution-service:4004
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
 
 volumes:
   postgres18-data:

@@ -137,10 +137,14 @@ The default `KNOWLEDGE_SEARCH_LIMIT=8` is a balanced production default.
 | 5     | Fast, lowest cost — good for simple factual Q&A           |
 | 8     | Balanced default — covers multi-part questions            |
 | 10    | Document summarisation or broad policy queries            |
-| 15+   | Invoice/financial workflows (already overridden in agent) |
+| 15+   | Broad financial workflows, capped at 20 by API validation |
 
 Beyond ~15 chunks, the LLM "lost in the middle" effect reduces answer quality — the model attends
 poorly to content in the middle of a long context window.
+
+Invoice workflows relax the retrieval threshold with `minSimilarity: -1` and then pass at most 20
+retrieved chunks into `document.extract_invoice_fields`. They do not use an unbounded "all chunks"
+mode.
 
 ### Configuration
 
@@ -152,6 +156,9 @@ poorly to content in the middle of a long context window.
 | `KNOWLEDGE_RERANK_ENABLED`           | `true`  | Set `false` to skip reranking (faster, less precise) |
 | `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS` | `60`    | Redis cache TTL for search results                   |
 
+The Kubernetes base currently overrides search to a stricter operational profile:
+`KNOWLEDGE_SEARCH_LIMIT=5` and `KNOWLEDGE_SEARCH_MIN_SIMILARITY=0.35`.
+
 ---
 
 ## Stage 3 — Answer Generation
@@ -162,7 +169,7 @@ After retrieval, the AI Gateway synthesizes a grounded answer.
 Retrieved chunks (with citations)
         │
         ▼
-  Synthesizer (gpt-4o, temp=0.1)
+  Synthesizer (AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING or fast deployment, temp=0.1)
   Receives:
     - User message
     - Retrieved chunks as numbered, labelled evidence (no raw RRF scores)
@@ -172,7 +179,7 @@ Retrieved chunks (with citations)
     - Cites document title and chunk ID for each claim
         │
         ▼
-  Validator (gpt-4o-mini, temp=0)
+  Validator (AZURE_OPENAI_CHAT_DEPLOYMENT_FAST, temp=0)
   Receives:
     - Draft answer
     - Actual retrieved chunk snippets (up to 600 chars each)

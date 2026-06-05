@@ -1,19 +1,12 @@
-/**
- * Tests for the pure functions that are most likely to regress:
- *  - isInvoiceWorkflowMessage (the generalized version)
- *  - extractRequestedPeriod
- *  - applyValidationGuardrail (via the exported helpers in a future refactor)
- *
- * The AgentRunner class itself depends on external services, so we test
- * its internal logic by importing the module and calling the functions
- * through the compiled module boundary using the private-export trick.
- *
- * For now we test the logic indirectly via buildFollowUpToolCalls by
- * providing mock toolCall arrays.
- */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { EventPublisher } from "@knoviq/events";
 
+import { AgentRunner } from "./agent-runner.js";
 import { extractRequestedPeriod, isInvoiceWorkflowMessage } from "./agent-heuristics.js";
+import type { AiGatewaySettings } from "./config.js";
+import type { AgentModel } from "./model.js";
+import type { AiGatewayRepository } from "./repository.js";
+import type { ToolExecutionClient } from "./tool-client.js";
 
 describe("isInvoiceWorkflowMessage", () => {
   it("detects invoice + total", () => {
@@ -75,3 +68,79 @@ describe("extractRequestedPeriod", () => {
     expect(extractRequestedPeriod("show me all invoice totals")).toBeNull();
   });
 });
+
+describe("AgentRunner greeting fast path", () => {
+  it("answers pure greetings without planner, tool, synthesis, or validation model calls", async () => {
+    const repository = {
+      addMessage: vi
+        .fn()
+        .mockResolvedValueOnce("user-message-id")
+        .mockResolvedValueOnce("assistant-message-id"),
+      assertConversationAccess: vi.fn(),
+      createConversation: vi.fn().mockResolvedValue("conversation-id"),
+      ensureMembership: vi.fn().mockResolvedValue(undefined),
+      getRecentMessages: vi.fn(),
+      recordLlmUsage: vi.fn(),
+      recordMessageCitations: vi.fn(),
+      recordToolMessage: vi.fn(),
+    } as unknown as AiGatewayRepository;
+    const model = {
+      plan: vi.fn(),
+      synthesize: vi.fn(),
+      validate: vi.fn(),
+    } as unknown as AgentModel;
+    const toolClient = {
+      executeTool: vi.fn(),
+      getTools: vi.fn(),
+    } as unknown as ToolExecutionClient;
+    const eventPublisher = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    } satisfies EventPublisher;
+    const runner = new AgentRunner(
+      repository,
+      model,
+      toolClient,
+      minimalSettings(),
+      eventPublisher,
+    );
+
+    const result = await runner.run({
+      accessToken: "token",
+      message: "hi",
+      requestId: "request-id",
+      tenantId: "tenant-id",
+      userId: "user-id",
+    });
+
+    expect(result.answer).toContain("Hi!");
+    expect(result.toolCalls).toEqual([]);
+    expect(model.plan).not.toHaveBeenCalled();
+    expect(model.synthesize).not.toHaveBeenCalled();
+    expect(model.validate).not.toHaveBeenCalled();
+    expect(toolClient.getTools).not.toHaveBeenCalled();
+    expect(repository.recordLlmUsage).not.toHaveBeenCalled();
+  });
+});
+
+function minimalSettings(): AiGatewaySettings {
+  return {
+    azureOpenAiApiKey: undefined,
+    azureOpenAiApiVersion: "2025-04-01-preview",
+    azureOpenAiChatDeploymentFast: undefined,
+    azureOpenAiChatDeploymentReasoning: undefined,
+    azureOpenAiEndpoint: undefined,
+    jwtAccessSecret: "x".repeat(32),
+    jwtAudience: "knoviq-api",
+    jwtIssuer: "knoviq-auth-service",
+    llmCompletionCostPer1kTokens: 0,
+    llmPromptCostPer1kTokens: 0,
+    llmRateLimitMaxRequests: 30,
+    llmRateLimitWindowSeconds: 60,
+    maxOutputTokens: 1200,
+    memoryMaxMessages: 12,
+    modelProvider: "local",
+    toolDefinitionsCacheTtlSeconds: 300,
+    toolExecutionServiceUrl: "http://127.0.0.1:4004",
+  };
+}

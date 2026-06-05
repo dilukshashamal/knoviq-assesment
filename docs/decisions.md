@@ -58,8 +58,8 @@ negligible compared to the 300–800ms LLM calls that follow.
 
 ## LLM reranking with a fast model
 
-**Decision:** After RRF, use `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` (gpt-4o-mini) to score each
-candidate 0–10 for relevance and keep the top-K.
+**Decision:** After RRF, use `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` to score each candidate 0-10 for
+relevance and keep the top-K.
 
 **Why:** Bi-encoder embeddings encode query and document independently. An LLM jointly attends to
 both, catching paraphrasing and subtle relevance that cosine similarity misses — the classic
@@ -71,16 +71,17 @@ per search regardless of pool size.
 
 ---
 
-## Dynamic chunk limit, not a hardcoded count
+## Configurable chunk limit with bounded invoice context
 
-**Decision:** `KNOWLEDGE_SEARCH_LIMIT` defaults to 8. It is configurable and the agent overrides
-it to `-1` (all chunks) for invoice workflows.
+**Decision:** `KNOWLEDGE_SEARCH_LIMIT` defaults to 8 for the local environment. Search requests
+may set a positive `limit` up to 20. Invoice workflows relax the similarity threshold with
+`minSimilarity: -1`, then pass at most 20 retrieved chunks into invoice extraction.
 
 **Why:** A fixed limit of 5 is too restrictive for multi-part questions, long documents, and
-financial analysis. A fixed limit of 20 sends too much context — the LLM "lost in the middle"
-effect (Liu et al., 2023) reduces answer quality beyond ~15 chunks. The default of 8 balances
-coverage and precision for general enterprise Q&A. Invoice workflows override the limit explicitly
-because they need all available chunks regardless of similarity score.
+financial analysis. A fixed limit of 20 sends too much context and increases extraction cost. The
+default of 8 balances coverage and precision for general enterprise Q&A. Invoice workflows relax
+similarity because invoices often contain sparse labels, totals, and dates that score poorly in
+semantic search even when they are operationally relevant.
 
 **Tradeoff:** Higher limits increase cost and latency proportionally. The reranker already reduces
 the candidate pool to the most relevant chunks before they reach the synthesizer.
@@ -89,8 +90,8 @@ the candidate pool to the most relevant chunks before they reach the synthesizer
 
 ## LLM-based invoice extraction instead of regex
 
-**Decision:** Use `gpt-4o-mini` to extract structured invoice fields from document text, not a set
-of regular expressions.
+**Decision:** Use the fast Azure chat deployment to extract structured invoice fields from document
+text, not a set of regular expressions.
 
 **Why:** Regex works only for one known document layout. Real-world invoices come in dozens of
 formats — expense tables, labeled PDFs, receipts, purchase orders, multi-currency reports. An LLM

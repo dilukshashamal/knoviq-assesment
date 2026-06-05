@@ -98,8 +98,8 @@ importers:
   apps/auth-service:
     dependencies:
       '@fastify/rate-limit':
-        specifier: 9.1.0
-        version: 9.1.0
+        specifier: 10.3.0
+        version: 10.3.0
       '@knoviq/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -137,6 +137,9 @@ importers:
       tsx:
         specifier: ^4.19.4
         version: 4.22.4
+      vitest:
+        specifier: 2.0.0
+        version: 2.0.0(@types/node@22.19.19)(lightningcss@1.32.0)
 
   apps/knowledge-service:
     dependencies:
@@ -290,6 +293,9 @@ importers:
       tailwindcss:
         specifier: ^4.1.8
         version: 4.3.0
+      vitest:
+        specifier: 2.0.0
+        version: 2.0.0(@types/node@22.19.19)(lightningcss@1.32.0)
 
   packages/ai: {}
 
@@ -300,6 +306,10 @@ importers:
       redis:
         specifier: ^5.8.2
         version: 5.12.1(@opentelemetry/api@1.9.1)
+    devDependencies:
+      vitest:
+        specifier: 2.0.0
+        version: 2.0.0(@types/node@22.19.19)(lightningcss@1.32.0)
 
   packages/config:
     dependencies:
@@ -328,6 +338,10 @@ importers:
       kafkajs:
         specifier: ^2.2.4
         version: 2.2.4
+    devDependencies:
+      vitest:
+        specifier: 2.0.0
+        version: 2.0.0(@types/node@22.19.19)(lightningcss@1.32.0)
 
   packages/logger:
     dependencies:
@@ -355,6 +369,10 @@ importers:
       fastify:
         specifier: ^5.4.0
         version: 5.8.5
+    devDependencies:
+      vitest:
+        specifier: 2.0.0
+        version: 2.0.0(@types/node@22.19.19)(lightningcss@1.32.0)
 
 packages:
 

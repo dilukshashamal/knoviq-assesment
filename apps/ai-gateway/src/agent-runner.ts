@@ -88,6 +88,13 @@ export class AgentRunner {
       role: "user",
     });
 
+    if (isPureConversationalGreeting(input.message)) {
+      return this.respondToPureGreeting({
+        conversationId,
+        input,
+      });
+    }
+
     const memory = await this.repository.getRecentMessages({
       conversationId,
       limit: this.settings.memoryMaxMessages,
@@ -325,6 +332,63 @@ export class AgentRunner {
       validation,
     });
     await input.emit?.({ data: result, type: "final" });
+
+    return result;
+  }
+
+  private async respondToPureGreeting(input: {
+    conversationId: string;
+    input: RunAgentInput;
+  }): Promise<AgentRunResult> {
+    await input.input.emit?.({
+      data: { agent: "small_talk", status: "completed" },
+      type: "agent_step",
+    });
+
+    const finalAnswer =
+      "Hi! I'm ready to help with your uploaded documents. Ask me a question when you're ready.";
+    const validation: AnswerValidation = {
+      confidence: 1,
+      issues: [],
+      requiredCaveats: [],
+      status: "grounded",
+      supportedToolNames: [],
+    };
+    const assistantMessageId = await this.repository.addMessage({
+      content: finalAnswer,
+      conversationId: input.conversationId,
+      metadata: {
+        validation,
+      },
+      role: "assistant",
+      tenantId: input.input.tenantId,
+      tokenCount: estimateTokens(finalAnswer),
+    });
+
+    await this.publishMessageCreated({
+      conversationId: input.conversationId,
+      input: input.input,
+      messageId: assistantMessageId,
+      role: "assistant",
+    });
+
+    const result: AgentRunResult = {
+      answer: finalAnswer,
+      assistantMessageId,
+      conversationId: input.conversationId,
+      requiresGroundedEvidence: false,
+      toolCalls: [],
+      validation,
+    };
+
+    await this.publishAgentRunCompleted({
+      assistantMessageId,
+      conversationId: input.conversationId,
+      input: input.input,
+      toolCalls: [],
+      validation,
+    });
+    await input.input.emit?.({ data: result, type: "final" });
 
     return result;
   }

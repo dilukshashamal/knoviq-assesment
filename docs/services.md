@@ -62,16 +62,17 @@ answer validation.
 
 Each chat turn runs four phases:
 
-1. **Planner** (`gpt-4o-mini`, temp=0) — selects tool calls from available definitions. KB-first
-   rule: always retrieves from the knowledge base for factual questions. Mandatory safety net injects
-   a retrieval call if the planner returns none.
+1. **Planner** (`AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`, temp=0) - selects tool calls from available
+   definitions. KB-first rule: always retrieves from the knowledge base for factual questions.
+   Mandatory safety net injects a retrieval call if the planner returns none.
 2. **Tool agents** — execute each tool call through the Tool Execution Service, with up to 4
    follow-up chaining rounds.
-3. **Synthesizer** (`gpt-4o`, temp=0.1) — produces a grounded answer from chunk citations and tool
-   outputs. Raw RRF scores are excluded from the context to prevent them from being misread as
-   relevance signals.
-4. **Validator** (`gpt-4o-mini`, temp=0) — checks every factual claim against retrieved chunks.
-   Returns `grounded`, `partially_grounded`, or `unsupported`. Paraphrase counts as grounded.
+3. **Synthesizer** (`AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING`, or the fast deployment when unset,
+   temp=0.1) - produces a grounded answer from chunk citations and tool outputs. Raw RRF scores are
+   excluded from the context to prevent them from being misread as relevance signals.
+4. **Validator** (`AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`, temp=0) - checks every factual claim against
+   retrieved chunks. Returns `grounded`, `partially_grounded`, or `unsupported`. Paraphrase counts
+   as grounded.
 
 ### Streaming events
 
@@ -100,6 +101,9 @@ Query param (for runtimes that don't support auth headers on WS): `?accessToken=
 | --------------------------- | ------- | -------------------------------------------------------------------- |
 | `AI_GATEWAY_MODEL_PROVIDER` | `azure` | Production — uses Azure OpenAI                                       |
 | `AI_GATEWAY_MODEL_PROVIDER` | `local` | Development — deterministic responses, no Azure credentials required |
+
+The chat service enforces an authenticated fixed-window rate limit for chat routes using
+`LLM_RATE_LIMIT_MAX_REQUESTS` and `LLM_RATE_LIMIT_WINDOW_SECONDS`.
 
 ---
 

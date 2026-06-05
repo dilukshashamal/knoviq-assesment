@@ -51,6 +51,7 @@ export interface AgentRunEvent {
   type:
     | "agent_step"
     | "conversation"
+    | "done"
     | "error"
     | "final"
     | "message"

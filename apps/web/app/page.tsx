@@ -257,37 +257,49 @@ export default function HomePage() {
       return;
     }
 
-    const userMessage: ChatMessage = {
-      content: trimmed,
-      createdAt: new Date().toISOString(),
-      id: crypto.randomUUID(),
-      role: "user",
-    };
-
     const threadBeforeRun = activeThread;
-    upsertThread({
-      ...threadBeforeRun,
-      messages: [...threadBeforeRun.messages, userMessage],
-      title:
-        threadBeforeRun.messages.length === 0 ? titleFromMessage(trimmed) : threadBeforeRun.title,
-      updatedAt: userMessage.createdAt,
+    const now = new Date().toISOString();
+    const assistantId = crypto.randomUUID();
+
+    // Add user message + empty assistant placeholder in ONE atomic update.
+    // Two separate upsertThread calls would race under React 18 batching —
+    // the second updater could read pre-first-update state and drop the user message.
+    setThreadState((current) => {
+      const existing =
+        current.threads.find((t) => t.id === current.activeThreadId) ??
+        current.threads[0] ??
+        createThread();
+      const updatedThread: ChatThread = {
+        ...existing,
+        ...(threadBeforeRun.conversationId
+          ? { conversationId: threadBeforeRun.conversationId }
+          : {}),
+        messages: [
+          ...existing.messages,
+          {
+            content: trimmed,
+            createdAt: now,
+            id: crypto.randomUUID(),
+            role: "user" as const,
+          },
+          {
+            content: "",
+            createdAt: now,
+            id: assistantId,
+            role: "assistant" as const,
+          },
+        ],
+        title: existing.messages.length === 0 ? titleFromMessage(trimmed) : existing.title,
+        updatedAt: now,
+      };
+      const remaining = current.threads.filter((t) => t.id !== updatedThread.id);
+      return { activeThreadId: updatedThread.id, threads: [updatedThread, ...remaining] };
     });
     setChatInput("");
     setChatLoading(true);
     setChatStatus(null);
 
-    // Placeholder assistant message shown while streaming
-    const assistantId = crypto.randomUUID();
-    const assistantPlaceholder: ChatMessage = {
-      content: "",
-      createdAt: new Date().toISOString(),
-      id: assistantId,
-      role: "assistant",
-    };
-    upsertThread((current) => ({
-      ...current,
-      messages: [...current.messages, assistantPlaceholder],
-    }));
+    let timeoutId: number | undefined;
 
     try {
       const body = JSON.stringify({
@@ -297,6 +309,9 @@ export default function HomePage() {
         message: trimmed,
       });
 
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), 120_000);
+
       const response = await fetch("/api/chat/stream", {
         body,
         headers: {
@@ -304,71 +319,119 @@ export default function HomePage() {
           "content-type": "application/json",
         },
         method: "POST",
+        signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) {
-        const text = await response.text();
+      if (!response.ok) {
         let errorMsg = `Request failed (${response.status.toString()})`;
         try {
-          const parsed = JSON.parse(text) as ApiErrorBody;
-          errorMsg = extractApiMessage(parsed, response.status);
+          errorMsg = extractApiMessage(JSON.parse(await response.text()) as ApiErrorBody, response.status);
         } catch {
           // ignore parse error
         }
         throw new Error(errorMsg);
       }
 
-      const reader = response.body.getReader();
+      // Read SSE chunks incrementally as they arrive from the gateway.
+      // Each chunk is decoded and split on the \n\n SSE block boundary.
+      // The UI shows "Thinking…" until the final event arrives, at which
+      // point the placeholder is patched atomically with the real answer.
+      const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let finalResult: ChatResponse | null = null;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+      const processSseBlock = (block: string): void => {
+        if (!block.trim()) return;
 
-        // SSE lines: "event: <type>\ndata: <json>\n\n"
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() ?? "";
+        const lines = block.replace(/\r\n/g, "\n").split("\n");
+        const dataLines: string[] = [];
+        let eventType = "message";
 
-        for (const block of blocks) {
-          const lines = block.split("\n");
-          let eventType = "";
-          let dataLine = "";
-          for (const line of lines) {
-            if (line.startsWith("event: ")) eventType = line.slice(7).trim();
-            if (line.startsWith("data: ")) dataLine = line.slice(6).trim();
-          }
-          if (!dataLine) continue;
-
-          if (eventType === "final" && dataLine !== "[DONE]") {
-            try {
-              finalResult = JSON.parse(dataLine) as ChatResponse;
-            } catch {
-              // ignore
-            }
-          }
-
-          // As soon as we have a final answer, update the placeholder
-          if (finalResult) {
-            upsertThreadById(assistantId, (msg) => ({
-              ...msg,
-              content: finalResult!.answer,
-              toolCalls: finalResult!.toolCalls,
-              validation: finalResult!.validation,
-            }));
-            upsertThread((current) => ({
-              ...current,
-              conversationId: finalResult!.conversationId,
-            }));
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).replace(/^ /, ""));
           }
         }
+
+        if (dataLines.length === 0) return;
+
+        const rawData = dataLines.join("\n");
+
+        if (eventType === "done") return;
+
+        if (eventType === "error") {
+          let errMsg = "Streaming chat failed";
+          try {
+            const parsed = JSON.parse(rawData) as ApiErrorBody;
+            errMsg = extractApiMessage(parsed, 500);
+          } catch {
+            errMsg = typeof rawData === "string" ? rawData : errMsg;
+          }
+          throw new Error(errMsg);
+        }
+
+        if (eventType !== "final") return;
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(rawData);
+        } catch {
+          return;
+        }
+
+        if (!isChatResponse(parsed)) return;
+
+        finalResult = parsed;
+
+        // Patch placeholder + set conversationId in one atomic state update.
+        setThreadState((current) => {
+          const threads = current.threads.map((thread) => {
+            if (thread.id !== current.activeThreadId) return thread;
+            return {
+              ...thread,
+              conversationId: finalResult!.conversationId,
+              messages: thread.messages.map((msg) =>
+                msg.id === assistantId
+                  ? {
+                      ...msg,
+                      content: finalResult!.answer,
+                      toolCalls: finalResult!.toolCalls,
+                      validation: finalResult!.validation,
+                    }
+                  : msg,
+              ),
+            };
+          });
+          return { ...current, threads };
+        });
+      };
+
+      // Stream loop — read and process each chunk as it arrives.
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          // Flush remaining bytes from the TextDecoder.
+          const tail = decoder.decode();
+          if (tail) buffer += tail;
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split completed SSE blocks (terminated by \n\n) and process each.
+        const blocks = buffer.split("\n\n");
+        // Keep the last (potentially incomplete) fragment in the buffer.
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) processSseBlock(block);
       }
 
-      // Fallback: if SSE finished without a "final" event, use whatever arrived
+      // Process any remaining buffered block after stream ends.
+      if (buffer.trim()) processSseBlock(buffer);
+
       if (!finalResult) {
-        throw new Error("Stream ended without a final answer. Please retry.");
+        throw new Error("No answer received from the assistant. Please retry.");
       }
 
       setChatStatus("Answer ready.");
@@ -380,6 +443,9 @@ export default function HomePage() {
       }));
       setChatStatus(getErrorMessage(error));
     } finally {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
       setChatLoading(false);
     }
   }
@@ -513,23 +579,6 @@ export default function HomePage() {
         activeThreadId: nextThread.id,
         threads: [nextThread, ...remaining],
       };
-    });
-  }
-
-  /**
-   * Updates a single message in the active thread by its message id.
-   * Used to patch the streaming placeholder once the final answer arrives.
-   */
-  function upsertThreadById(messageId: string, updater: (msg: ChatMessage) => ChatMessage) {
-    setThreadState((current) => {
-      const threads = current.threads.map((thread) => {
-        if (thread.id !== current.activeThreadId) return thread;
-        return {
-          ...thread,
-          messages: thread.messages.map((msg) => (msg.id === messageId ? updater(msg) : msg)),
-        };
-      });
-      return { ...current, threads };
     });
   }
 
@@ -1067,6 +1116,21 @@ async function requestJson<TResponse>(
   }
 
   return data as TResponse;
+}
+
+function isChatResponse(value: unknown): value is ChatResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ChatResponse>;
+  return (
+    typeof candidate.answer === "string" &&
+    typeof candidate.conversationId === "string" &&
+    Array.isArray(candidate.toolCalls) &&
+    !!candidate.validation &&
+    typeof candidate.validation === "object"
+  );
 }
 
 function extractSources(toolCalls: ToolCall[]): SourceReference[] {

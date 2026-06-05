@@ -80,6 +80,7 @@ runtime process.
 | `@knoviq/contracts`     | Shared API schemas: health responses, error shapes, role enum       |
 | `@knoviq/database`      | `pg` pool factory and `withTransaction` helper                      |
 | `@knoviq/events`        | Kafka domain event publisher with `DisabledEventPublisher` fallback |
+| `@knoviq/logger`        | Shared pino logger factory                                          |
 | `@knoviq/observability` | OpenTelemetry span helpers, `createTimer`, LLM cost estimation      |
 
 ## Data Boundaries

@@ -101,16 +101,21 @@ Base manifests live at `infra/k8s/base`.
 
 ### Included Resources
 
-| Resource                     | Description                                          |
-| ---------------------------- | ---------------------------------------------------- |
-| `namespace.yaml`             | `knoviq` namespace                                   |
-| `configmap.yaml`             | Non-secret environment configuration                 |
-| `secret.example.yaml`        | Template for required secrets (fill before applying) |
-| `postgres/`                  | PostgreSQL StatefulSet + Service                     |
-| `redis/`                     | Redis Deployment + Service                           |
-| `migrations/`                | One-shot migration Job                               |
-| `*/deployment.yaml`          | Deployment + Service for each backend                |
-| `knowledge-service/pvc.yaml` | PersistentVolumeClaim for document uploads           |
+| Resource                | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `namespace.yaml`        | `knoviq` namespace                                   |
+| `configmap.yaml`        | Non-secret environment configuration                 |
+| `secret.example.yaml`   | Template for required secrets (fill before applying) |
+| `postgres.yaml`         | PostgreSQL StatefulSet + Service                     |
+| `redis.yaml`            | Redis Deployment + Service                           |
+| `kafka.yaml`            | Kafka broker Deployment + Service                    |
+| `migration-job.yaml`    | One-shot migration Job                               |
+| `backend-services.yaml` | PVC plus Deployment + Service for each backend       |
+| `kustomization.yaml`    | Kustomize base that renders all resources            |
+
+The current Kubernetes base deploys the four backend services and supporting infrastructure. The
+Next.js web app is currently covered by Docker Compose and `infra/docker/web.Dockerfile`; add a web
+Deployment/Service before using Kubernetes as the full production runtime.
 
 ### Apply
 
@@ -133,7 +138,8 @@ kubectl scale deployment knowledge-service --replicas=2 -n knoviq
 kubectl scale deployment tool-execution-service --replicas=2 -n knoviq
 ```
 
-Auth Service and Web are stateless and scale horizontally with no additional configuration.
+Auth Service is stateless and scales horizontally with no additional configuration. The web app is
+also stateless, but it does not yet have a Kubernetes manifest in `infra/k8s/base`.
 
 ### Production Recommendations
 
@@ -150,15 +156,16 @@ Auth Service and Web are stateless and scale horizontally with no additional con
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`.
 
-| Job         | Steps                                                 |
-| ----------- | ----------------------------------------------------- |
-| `quality`   | Install -> format check -> build -> lint -> typecheck |
-| `docker`    | Buildx `--check` for backend and web Dockerfiles      |
-| `manifests` | `kubectl kustomize infra/k8s/base` render check       |
+| Job         | Steps                                                                        |
+| ----------- | ---------------------------------------------------------------------------- |
+| `quality`   | Install -> format check -> build -> lint -> typecheck -> test                |
+| `docker`    | Buildx `--check` for the backend Dockerfile across all four backend services |
+| `manifests` | `kubectl kustomize infra/k8s/base` render check                              |
 
 ### Container Publishing
 
-`.github/workflows/container-publish.yml` builds and pushes images to GitHub Container Registry.
+`.github/workflows/container-publish.yml` builds and pushes backend images to GitHub Container
+Registry.
 
 Triggers: manual `workflow_dispatch` or semver tags such as `v0.1.0`.
 
@@ -169,10 +176,12 @@ ghcr.io/<owner>/knoviq-auth-service:<tag>
 ghcr.io/<owner>/knoviq-ai-gateway:<tag>
 ghcr.io/<owner>/knoviq-knowledge-service:<tag>
 ghcr.io/<owner>/knoviq-tool-execution-service:<tag>
-ghcr.io/<owner>/knoviq-web:<tag>
 ```
 
 Each image is tagged with both the git tag and a `sha-...` digest tag for traceability.
+
+The web image is built locally through `pnpm docker:build:web` and Docker Compose, but it is not
+currently published by the GHCR workflow.
 
 ### Cluster Deployment
 

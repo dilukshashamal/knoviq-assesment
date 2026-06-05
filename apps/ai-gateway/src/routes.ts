@@ -23,7 +23,11 @@ export function registerChatRoutes(
 ) {
   const authenticateAndRateLimit = async (request: FastifyRequest, reply: FastifyReply) => {
     await app.authenticate(request, reply);
-    await enforceLlmRateLimit(request, reply, llmRateLimiter);
+    const allowed = await enforceLlmRateLimit(request, reply, llmRateLimiter);
+
+    if (!allowed) {
+      return reply;
+    }
   };
 
   app.post("/chat", { preHandler: authenticateAndRateLimit }, async (request) => {
@@ -77,7 +81,7 @@ export function registerChatRoutes(
           ? runInput
           : { ...runInput, conversationId: body.conversationId },
       );
-      writeSse(reply, { data: "[DONE]", type: "final" });
+      writeSse(reply, { data: "[DONE]", type: "done" });
     } catch (error) {
       writeSse(reply, {
         data: {
@@ -150,14 +154,28 @@ function requirePrincipal(request: FastifyRequest) {
 function prepareSse(reply: FastifyReply): void {
   reply.raw.writeHead(200, {
     "cache-control": "no-cache",
+    "connection": "keep-alive",
     "content-type": "text/event-stream; charset=utf-8",
+    "transfer-encoding": "chunked",
     "x-accel-buffering": "no",
   });
 }
 
 function writeSse(reply: FastifyReply, event: AgentRunEvent): void {
-  reply.raw.write(`event: ${event.type}\n`);
-  reply.raw.write(`data: ${JSON.stringify(event.data)}\n\n`);
+  // Write the full SSE frame atomically in one write() call.
+  // Splitting event: and data: into two separate writes risks them landing
+  // in separate TCP chunks, which breaks the client-side block parser.
+  const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+  reply.raw.write(frame);
+
+  // Explicitly flush the socket after every event so chunks reach the
+  // browser immediately instead of being held in Node's TCP write buffer.
+  // This is critical for short responses (greetings) where Node may buffer
+  // the entire body before flushing if we don't force it.
+  const socket = (reply.raw as unknown as { socket?: { flush?: () => void } }).socket;
+  if (socket?.flush) {
+    socket.flush();
+  }
 }
 
 function parseStreamingAccessToken(request: FastifyRequest): string {
@@ -221,7 +239,7 @@ async function handleWebSocketChatMessage(input: {
         ? runInput
         : { ...runInput, conversationId: body.conversationId },
     );
-    writeWebSocketEvent(input.connection, { data: "[DONE]", type: "final" });
+    writeWebSocketEvent(input.connection, { data: "[DONE]", type: "done" });
   } catch (error) {
     writeWebSocketEvent(input.connection, {
       data: {
@@ -244,14 +262,14 @@ async function enforceLlmRateLimit(
   request: FastifyRequest,
   reply: FastifyReply,
   limiter: AuthenticatedFixedWindowRateLimiter,
-): Promise<void> {
+): Promise<boolean> {
   const decision = await consumeLlmRateLimit(request, limiter);
 
   if (decision.allowed) {
     reply.header("x-ratelimit-limit", String(decision.limit));
     reply.header("x-ratelimit-remaining", String(decision.remaining));
     reply.header("x-ratelimit-reset", String(decision.resetAfterSeconds));
-    return;
+    return true;
   }
 
   reply.header("retry-after", String(decision.resetAfterSeconds));
@@ -266,6 +284,7 @@ async function enforceLlmRateLimit(
     requestId: request.id,
     resetAfterSeconds: decision.resetAfterSeconds,
   });
+  return false;
 }
 
 async function consumeLlmRateLimit(

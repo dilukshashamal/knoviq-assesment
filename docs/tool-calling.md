@@ -17,7 +17,7 @@ POST /chat { message: "..." }
      (cached in Redis for 300s)
         │
         ▼
-  3. PLANNER  gpt-4o-mini, temp=0
+  3. PLANNER  AZURE_OPENAI_CHAT_DEPLOYMENT_FAST, temp=0
      Input:  recent memory + tool definitions + user message
      Output: JSON { toolCalls: [{ toolName, arguments, reason }] }
 
@@ -49,12 +49,12 @@ POST /chat { message: "..." }
      Invoice workflow: retrieve → extract_invoice_fields → calculator
         │
         ▼
-  6. SYNTHESIZER  gpt-4o, temp=0.1
+  6. SYNTHESIZER  AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING or fast deployment, temp=0.1
      Receives numbered citation chunks + tool outputs
      Produces grounded answer with document references
         │
         ▼
-  7. VALIDATOR  gpt-4o-mini, temp=0
+  7. VALIDATOR  AZURE_OPENAI_CHAT_DEPLOYMENT_FAST, temp=0
      Checks every claim against retrieved chunk snippets
         │
         ▼
@@ -87,7 +87,7 @@ The AI Gateway caches `GET /tools` in Redis with `TOOL_DEFINITIONS_CACHE_TTL_SEC
 The runner detects invoice-related messages and automatically chains tools:
 
 ```
-knowledge.retrieve  (minSimilarity: -1, all relevant chunks)
+knowledge.retrieve  (relaxed minSimilarity, bounded limit)
         │
         ▼
 document.extract_invoice_fields
@@ -101,7 +101,11 @@ calculator.evaluate
 Synthesizer
 ```
 
-Each intermediate step is logged in `knoviq.tool_executions`, included in the streaming `tool_result` events, and stored in assistant message metadata for full auditability.
+Each intermediate step is logged in `knoviq.tool_executions`, included in the streaming
+`tool_result` events, and stored in assistant message metadata for full auditability.
+
+The Knowledge Service validates retrieval limits as positive integers with a maximum of 20. Invoice
+flows can relax similarity with `minSimilarity: -1`, but they still process a bounded chunk set.
 
 ## SQL Safety
 

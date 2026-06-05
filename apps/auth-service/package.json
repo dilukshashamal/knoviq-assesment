@@ -9,11 +9,11 @@
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "start": "node dist/server.js",
-    "test": "node -e \"console.log('No tests yet for auth-service')\"",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fastify/rate-limit": "9.1.0",
+    "@fastify/rate-limit": "10.3.0",
     "@knoviq/auth": "workspace:*",
     "@knoviq/config": "workspace:*",
     "@knoviq/contracts": "workspace:*",
@@ -27,6 +27,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "vitest": "2.0.0"
   }
 }

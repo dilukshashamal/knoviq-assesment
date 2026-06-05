@@ -5,6 +5,8 @@ import {
   forwardJsonResponse,
 } from "../_lib/backend";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request): Promise<Response> {
   try {
     const response = await fetch(`${backendUrls.knowledge}/documents`, {

@@ -4,7 +4,8 @@
 
 Knoviq uses a **shared-database, tenant-scoped** data model. All tenant-owned records carry a `tenant_id` column. Services receive the active tenant from the verified JWT access token and pass it into every repository query.
 
-No service accepts a tenant ID from the request body. Tenant context always comes from the token — clients cannot choose arbitrary tenants.
+No service accepts a tenant ID from the request body. Tenant context always comes from the token;
+clients cannot choose arbitrary tenants.
 
 ## Tenant Identity
 
@@ -32,14 +33,14 @@ Users can belong to multiple tenants. `POST /auth/login` accepts a `tenantSlug` 
 owner  >  admin  >  member  >  viewer
 ```
 
-| Action                            | Minimum role                     |
-| --------------------------------- | -------------------------------- |
-| Ask questions, view answers       | `viewer`                         |
-| Upload documents                  | `contributor` (maps to `member`) |
-| Run SQL reporting tools           | `manager` (maps to `admin`)      |
-| Manage tenant members (non-owner) | `admin`                          |
-| Manage owner memberships          | `owner`                          |
-| View audit reports                | `admin`                          |
+| Action                            | Minimum role |
+| --------------------------------- | ------------ |
+| Ask questions, view answers       | `viewer`     |
+| Upload documents                  | `member`     |
+| Run SQL reporting tools           | `admin`      |
+| Manage tenant members (non-owner) | `admin`      |
+| Manage owner memberships          | `owner`      |
+| View audit reports                | `admin`      |
 
 One owner must always remain. The system rejects any operation that would remove the last owner of a tenant.
 
@@ -48,8 +49,8 @@ One owner must always remain. The system rejects any operation that would remove
 Every backend service follows this pattern:
 
 ```typescript
-// 1. Verify JWT → extract tenantId, userId, role
-app.authenticate → request.principal
+// 1. Verify JWT, then extract tenantId, userId, role
+app.authenticate -> request.principal
 
 // 2. Validate membership when needed
 await repository.ensureMembership(tenantId, userId)
