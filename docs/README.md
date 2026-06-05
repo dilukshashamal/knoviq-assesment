@@ -1,5 +1,41 @@
 # Knoviq Documentation
 
+## Current Startup
+
+Run the full Docker stack, including the Next.js frontend:
+
+```powershell
+docker compose --profile app up -d --build
+```
+
+Open the frontend at [http://localhost:3000](http://localhost:3000).
+
+Useful checks:
+
+```powershell
+docker ps
+docker compose logs -f
+```
+
+Stop the stack:
+
+```powershell
+corepack pnpm docker:down
+```
+
+For infrastructure only, without app containers:
+
+```powershell
+corepack pnpm docker:up
+```
+
+For local frontend development while Docker runs the backend services:
+
+```powershell
+docker compose --profile app up -d auth-service ai-gateway knowledge-service tool-execution-service
+corepack pnpm --filter @knoviq/web dev
+```
+
 | Document                                 | What it covers                                                                              |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [architecture.md](./architecture.md)     | System overview, service boundaries, data ownership, security model                         |

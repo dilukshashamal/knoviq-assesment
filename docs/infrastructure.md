@@ -178,6 +178,12 @@ All services write Fastify request metrics to `knoviq.service_metrics`:
 The `sql.query_safe` operation `service_metric_summary` exposes these to the agent and admin
 console.
 
+### Container healthchecks
+
+The local Docker Compose application containers use Node's built-in `fetch` for HTTP healthchecks.
+This keeps the runtime images based on `node:22-bookworm-slim` without adding `wget` or `curl`.
+Backend services expose `/health`; the web container checks `/` on port 3000.
+
 ### LLM usage and cost
 
 Every LLM call writes a row to `knoviq.llm_usage`:

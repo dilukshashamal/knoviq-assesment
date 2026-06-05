@@ -220,8 +220,12 @@ status, error code/message, request ID, tenant ID, user ID, conversation ID, and
 
 ## Web Frontend · port 3000
 
-Next.js 15 App Router application. API routes act as a Backend-for-Frontend (BFF), proxying
+Next.js 16 App Router application. API routes act as a Backend-for-Frontend (BFF), proxying
 requests to backend services while forwarding the user's JWT.
+
+In Docker Compose, the web container runs on port 3000 and uses internal service URLs:
+`auth-service:4001`, `ai-gateway:4002`, `knowledge-service:4003`, and
+`tool-execution-service:4004`.
 
 ### API routes
 
