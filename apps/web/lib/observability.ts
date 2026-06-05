@@ -12,6 +12,8 @@ export interface ToolExecutionResponse {
 }
 
 export interface ObservabilityResponse {
+  answer_quality_incidents?: ToolExecutionResponse;
+  answer_quality_trend?: ToolExecutionResponse;
   answer_validation_summary?: ToolExecutionResponse;
   llm_usage_summary?: ToolExecutionResponse;
   recent_tool_executions?: ToolExecutionResponse;
@@ -19,7 +21,63 @@ export interface ObservabilityResponse {
   tool_execution_summary?: ToolExecutionResponse;
 }
 
+export interface QualityTraceToolCall {
+  arguments: unknown;
+  error?:
+    | {
+        code?: string;
+        message?: string;
+      }
+    | undefined;
+  latencyMs?: number;
+  output?: unknown;
+  reason?: string;
+  status: string;
+  toolName: string;
+}
+
+export interface QualityIncident {
+  answer: string;
+  conversationId: string;
+  conversationTitle: string;
+  createdAt: string;
+  draftAnswer: string;
+  failedToolCount: number;
+  id: string;
+  issues: string[];
+  messageId: string;
+  modelDeployment: string;
+  requiredCaveats: string[];
+  retrievalCount: number;
+  retrievalQueries: string[];
+  retrievalResultCount: number;
+  reviewPriority: string;
+  status: string;
+  supportedToolNames: string[];
+  tokenCount: number;
+  toolCallCount: number;
+  trace: {
+    draftAnswer: string;
+    toolCalls: QualityTraceToolCall[];
+    validation: Record<string, unknown>;
+  };
+  userLabel: string;
+  userQuestion: string;
+  validationConfidence: number;
+}
+
+export interface QualityTrendBucket {
+  bucket: string;
+  grounded: number;
+  partiallyGrounded: number;
+  totalCount: number;
+  unsupported: number;
+  unsupportedRate: number;
+}
+
 export function buildMonitorSummary(data: ObservabilityResponse | null) {
+  const qualityIncidentRowsRaw = data?.answer_quality_incidents?.output?.rows ?? [];
+  const qualityTrendRowsRaw = data?.answer_quality_trend?.output?.rows ?? [];
   const serviceRows = data?.service_metric_summary?.output?.rows ?? [];
   const llmRows = data?.llm_usage_summary?.output?.rows ?? [];
   const toolRowsRaw = data?.tool_execution_summary?.output?.rows ?? [];
@@ -46,7 +104,7 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
   const llmRequests = llmRows.reduce((sum, row) => sum + asNumber(row.request_count), 0);
 
   // Azure OpenAI pricing per 1k tokens (June 2026 public rates).
-  // These match the values set in .env — used to compute cost client-side
+  // These match the values set in .env - used to compute cost client-side
   // because historical DB rows may have estimated_cost_usd = 0 when the
   // pricing env vars were not configured at write time.
   const PRICING: Record<string, { prompt: number; completion: number }> = {
@@ -94,7 +152,7 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
   const totalCostUsd = usageRows.reduce((sum, row) => sum + row.costUsd, 0);
   const llmCostUsd = totalCostUsd.toFixed(4);
   const llmCostDisplay =
-    totalCostUsd > 0 ? `$${llmCostUsd}` : llmRequests > 0 ? "Pricing not set" : "—";
+    totalCostUsd > 0 ? `$${llmCostUsd}` : llmRequests > 0 ? "Pricing not set" : "-";
 
   const toolFailures = toolRowsRaw
     .filter((row) => asString(row.status) === "failed")
@@ -105,13 +163,56 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
     .reduce((sum, row) => sum + asNumber(row.count), 0);
   const unsupportedRate =
     validationCount === 0 ? 0 : Math.round((unsupportedCount / validationCount) * 100);
+  const qualityIncidents = qualityIncidentRowsRaw.map((row) => {
+    const trace = asQualityTrace(row.trace);
+
+    return {
+      answer: asString(row.answer),
+      conversationId: asString(row.conversation_id),
+      conversationTitle: asString(row.conversation_title) || "Untitled conversation",
+      createdAt: asString(row.created_at),
+      draftAnswer: asString(row.draft_answer),
+      failedToolCount: asNumber(row.failed_tool_count),
+      id: asString(row.message_id),
+      issues: asStringArray(row.validation_issues),
+      messageId: asString(row.message_id),
+      modelDeployment: asString(row.model_deployment),
+      requiredCaveats: asStringArray(row.required_caveats),
+      retrievalCount: asNumber(row.retrieval_count),
+      retrievalQueries: asStringArray(row.retrieval_queries),
+      retrievalResultCount: asNumber(row.retrieval_result_count),
+      reviewPriority: asString(row.review_priority) || "low",
+      status: asString(row.validation_status),
+      supportedToolNames: asStringArray(row.supported_tool_names),
+      tokenCount: asNumber(row.token_count),
+      toolCallCount: asNumber(row.tool_call_count),
+      trace,
+      userLabel: asString(row.user_name) || asString(row.user_email) || "User",
+      userQuestion: asString(row.user_question),
+      validationConfidence: asNumber(row.validation_confidence),
+    };
+  });
+  const qualityTrend = buildQualityTrend(qualityTrendRowsRaw);
+  const highPriorityReviewCount = qualityIncidents.filter(
+    (incident) => incident.reviewPriority === "high",
+  ).length;
+  const retrievalMissCount = qualityIncidents.filter(
+    (incident) => incident.retrievalCount > 0 && incident.retrievalResultCount === 0,
+  ).length;
+  const failedToolIncidentCount = qualityIncidents.filter(
+    (incident) => incident.failedToolCount > 0,
+  ).length;
 
   return {
     averageLatencyMs,
+    failedToolIncidentCount,
+    highPriorityReviewCount,
     llmCostDisplay,
     llmCostUsd,
     llmRequests,
     maxLatencyMs,
+    qualityIncidents,
+    qualityTrend,
     recentTools: recentToolRowsRaw.slice(0, 8).map((row) => ({
       completedAt: asString(row.completed_at),
       createdAt: asString(row.created_at),
@@ -121,6 +222,7 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
       toolName: asString(row.tool_name),
     })),
     requestCount,
+    retrievalMissCount,
     serviceLatency: groupServiceLatency(latencyMetrics),
     toolFailures,
     toolRows: toolRowsRaw.slice(0, 10).map((row) => ({
@@ -139,6 +241,50 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
     })),
     usageRows,
   };
+}
+
+function buildQualityTrend(rows: Record<string, unknown>[]): QualityTrendBucket[] {
+  const grouped = new Map<string, QualityTrendBucket>();
+
+  for (const row of rows) {
+    const bucket = asString(row.bucket);
+
+    if (!bucket) {
+      continue;
+    }
+
+    const existing =
+      grouped.get(bucket) ??
+      ({
+        bucket,
+        grounded: 0,
+        partiallyGrounded: 0,
+        totalCount: asNumber(row.total_count),
+        unsupported: 0,
+        unsupportedRate: asNumber(row.unsupported_rate),
+      } satisfies QualityTrendBucket);
+    const count = asNumber(row.count);
+
+    switch (asString(row.validation_status)) {
+      case "grounded":
+        existing.grounded += count;
+        break;
+      case "partially_grounded":
+        existing.partiallyGrounded += count;
+        break;
+      case "unsupported":
+        existing.unsupported += count;
+        break;
+    }
+
+    existing.totalCount = Math.max(existing.totalCount, asNumber(row.total_count));
+    existing.unsupportedRate = Math.max(existing.unsupportedRate, asNumber(row.unsupported_rate));
+    grouped.set(bucket, existing);
+  }
+
+  return [...grouped.values()]
+    .sort((left, right) => left.bucket.localeCompare(right.bucket))
+    .slice(-14);
 }
 
 function groupServiceLatency(latencyMetrics: Record<string, unknown>[]) {
@@ -184,6 +330,61 @@ function groupServiceLatency(latencyMetrics: Record<string, unknown>[]) {
     sampleCount: entry.sampleCount,
     service: entry.service,
   }));
+}
+
+function asQualityTrace(value: unknown): QualityIncident["trace"] {
+  const record = asRecord(value);
+
+  return {
+    draftAnswer: asString(record.draftAnswer),
+    toolCalls: asRecordArray(record.toolCalls).map((toolCall) => ({
+      arguments: toolCall.arguments,
+      error: asOptionalError(toolCall.error),
+      latencyMs: asNumber(toolCall.latencyMs),
+      output: toolCall.output,
+      reason: asString(toolCall.reason),
+      status: asString(toolCall.status),
+      toolName: asString(toolCall.toolName),
+    })),
+    validation: asRecord(record.validation),
+  };
+}
+
+function asOptionalError(value: unknown): QualityTraceToolCall["error"] | undefined {
+  const record = asRecord(value);
+  const code = asString(record.code);
+  const message = asString(record.message);
+
+  if (!code && !message) {
+    return undefined;
+  }
+
+  return { code, message };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(asRecord).filter((item) => Object.keys(item).length > 0);
+}
+
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item : ""))
+      .filter((item) => item.length > 0);
+  }
+
+  const singleValue = asString(value);
+  return singleValue ? [singleValue] : [];
 }
 
 function asString(value: unknown): string {

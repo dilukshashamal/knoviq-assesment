@@ -14,7 +14,12 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { buildMonitorSummary, type ObservabilityResponse } from "@/lib/observability";
+import {
+  buildMonitorSummary,
+  type ObservabilityResponse,
+  type QualityIncident,
+  type QualityTraceToolCall,
+} from "@/lib/observability";
 import { isAdminRole, readStoredSession, type AuthResponse } from "@/lib/session";
 
 interface HealthCheck {
@@ -35,17 +40,43 @@ interface ApiErrorBody {
   message?: string;
 }
 
+type MonitorSummary = ReturnType<typeof buildMonitorSummary>;
+
+const REVIEW_ACTIONS = [
+  { label: "Bad answer", value: "bad_answer" },
+  { label: "Retrieval issue", value: "retrieval_issue" },
+  { label: "Validator false alarm", value: "validator_false_alarm" },
+  { label: "Resolved", value: "resolved" },
+] as const;
+
 export default function MonitoringPage() {
   const [session, setSession] = useState<AuthResponse | null>(null);
   const [observability, setObservability] = useState<ObservabilityResponse | null>(null);
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewDecisions, setReviewDecisions] = useState<Record<string, string>>({});
+  const [reviewDecisionsLoaded, setReviewDecisionsLoaded] = useState(false);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
   const monitor = useMemo(() => buildMonitorSummary(observability), [observability]);
   const canView = isAdminRole(session?.user.role);
   const allServicesReady = healthChecks.length > 0 && healthChecks.every((check) => check.ok);
+  const reviewStorageKey = session ? `knoviq.qualityReviews.${session.user.tenantId}` : undefined;
+  const openQualityIncidents = useMemo(
+    () =>
+      monitor.qualityIncidents.filter((incident) => reviewDecisions[incident.id] !== "resolved"),
+    [monitor.qualityIncidents, reviewDecisions],
+  );
+  const selectedIncident = useMemo(
+    () =>
+      monitor.qualityIncidents.find((incident) => incident.id === selectedIncidentId) ??
+      openQualityIncidents[0] ??
+      monitor.qualityIncidents[0] ??
+      null,
+    [monitor.qualityIncidents, openQualityIncidents, selectedIncidentId],
+  );
 
   useEffect(() => {
     const storedSession = readStoredSession();
@@ -65,6 +96,31 @@ export default function MonitoringPage() {
 
     void refresh(storedSession.tokens.accessToken);
   }, []);
+
+  useEffect(() => {
+    if (!reviewStorageKey) {
+      return;
+    }
+
+    try {
+      const storedReviews = window.localStorage.getItem(reviewStorageKey);
+      setReviewDecisions(
+        storedReviews ? (JSON.parse(storedReviews) as Record<string, string>) : {},
+      );
+    } catch {
+      setReviewDecisions({});
+    } finally {
+      setReviewDecisionsLoaded(true);
+    }
+  }, [reviewStorageKey]);
+
+  useEffect(() => {
+    if (!reviewStorageKey || !reviewDecisionsLoaded) {
+      return;
+    }
+
+    window.localStorage.setItem(reviewStorageKey, JSON.stringify(reviewDecisions));
+  }, [reviewDecisions, reviewDecisionsLoaded, reviewStorageKey]);
 
   async function refresh(token = session?.tokens.accessToken) {
     if (!token) {
@@ -96,6 +152,13 @@ export default function MonitoringPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function markIncidentReview(incidentId: string, decision: string) {
+    setReviewDecisions((current) => ({
+      ...current,
+      [incidentId]: decision,
+    }));
   }
 
   return (
@@ -155,8 +218,8 @@ export default function MonitoringPage() {
             />
             <MetricTile
               icon={<TriangleAlert className="h-4 w-4" />}
-              label="Needs review"
-              value={`${monitor.unsupportedRate}%`}
+              label="Review queue"
+              value={formatNumber(openQualityIncidents.length)}
             />
             <MetricTile
               icon={<Clock3 className="h-4 w-4" />}
@@ -213,27 +276,16 @@ export default function MonitoringPage() {
               </div>
             </section>
 
-            <section className="admin-panel">
-              <div className="monitor-header">
-                <div>
-                  <p className="eyebrow">Quality</p>
-                  <h2>Answer review</h2>
-                </div>
-                <StatusDot ok={monitor.unsupportedRate === 0} />
-              </div>
-              <div className="monitor-section compact">
-                {monitor.validationRows.length === 0 ? (
-                  <p className="muted-copy">No checked answers yet.</p>
-                ) : (
-                  monitor.validationRows.map((row) => (
-                    <div className="metric-row" key={row.status}>
-                      <span>{formatValidationStatus(row.status)}</span>
-                      <strong>{formatNumber(row.count)}</strong>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
+            <QualityPulsePanel monitor={monitor} />
+
+            <QualityReviewPanel
+              incidents={monitor.qualityIncidents}
+              openCount={openQualityIncidents.length}
+              reviewDecisions={reviewDecisions}
+              selectedIncident={selectedIncident}
+              onDecision={markIncidentReview}
+              onSelect={setSelectedIncidentId}
+            />
 
             <section className="admin-panel wide">
               <div className="monitor-header">
@@ -255,7 +307,7 @@ export default function MonitoringPage() {
                         {formatPurpose(row.purpose)}
                         <small>{formatNumber(row.totalTokens)} tokens</small>
                       </span>
-                      <strong>{row.costUsd > 0 ? `$${row.costUsd.toFixed(4)}` : "—"}</strong>
+                      <strong>{row.costUsd > 0 ? `$${row.costUsd.toFixed(4)}` : "-"}</strong>
                     </div>
                   ))
                 )}
@@ -338,6 +390,334 @@ export default function MonitoringPage() {
         </>
       )}
     </main>
+  );
+}
+
+function QualityPulsePanel(props: { monitor: MonitorSummary }) {
+  const latestTrend = props.monitor.qualityTrend.at(-1);
+
+  return (
+    <section className="admin-panel">
+      <div className="monitor-header">
+        <div>
+          <p className="eyebrow">Quality</p>
+          <h2>Answer pulse</h2>
+        </div>
+        <StatusDot
+          ok={props.monitor.unsupportedRate === 0 && props.monitor.highPriorityReviewCount === 0}
+        />
+      </div>
+
+      <div className="quality-signal-grid">
+        <QualitySignal
+          label="Unsupported rate"
+          tone={props.monitor.unsupportedRate > 0 ? "warning" : "ok"}
+          value={`${props.monitor.unsupportedRate}%`}
+        />
+        <QualitySignal
+          label="High priority"
+          tone={props.monitor.highPriorityReviewCount > 0 ? "danger" : "ok"}
+          value={formatNumber(props.monitor.highPriorityReviewCount)}
+        />
+        <QualitySignal
+          label="Retrieval misses"
+          tone={props.monitor.retrievalMissCount > 0 ? "warning" : "ok"}
+          value={formatNumber(props.monitor.retrievalMissCount)}
+        />
+        <QualitySignal
+          label="Tool failures"
+          tone={props.monitor.failedToolIncidentCount > 0 ? "warning" : "ok"}
+          value={formatNumber(props.monitor.failedToolIncidentCount)}
+        />
+      </div>
+
+      <div className="monitor-section compact">
+        {props.monitor.validationRows.length === 0 ? (
+          <p className="muted-copy">No checked answers yet.</p>
+        ) : (
+          props.monitor.validationRows.map((row) => (
+            <div className="metric-row" key={row.status}>
+              <span>
+                {formatValidationStatus(row.status)}
+                <small>{formatConfidence(row.averageConfidence)} avg confidence</small>
+              </span>
+              <strong>{formatNumber(row.count)}</strong>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="monitor-section compact">
+        <div className="quality-trend-header">
+          <span>30-day quality trend</span>
+          <strong>{latestTrend ? `${latestTrend.unsupportedRate}%` : "-"}</strong>
+        </div>
+        {props.monitor.qualityTrend.length === 0 ? (
+          <p className="muted-copy">No trend samples yet.</p>
+        ) : (
+          <div className="quality-trend-bars" aria-label="Unsupported answer rate by day">
+            {props.monitor.qualityTrend.map((bucket) => (
+              <div
+                className={
+                  bucket.unsupportedRate > 0 ? "quality-trend-bar warning" : "quality-trend-bar"
+                }
+                key={bucket.bucket}
+                title={`${formatShortDate(bucket.bucket)}: ${bucket.unsupportedRate}% unsupported`}
+              >
+                <span
+                  style={{
+                    height: `${Math.max(4, Math.min(100, bucket.unsupportedRate))}%`,
+                  }}
+                />
+                <small>{formatShortDate(bucket.bucket)}</small>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function QualitySignal(props: { label: string; tone: "danger" | "ok" | "warning"; value: string }) {
+  return (
+    <div className={`quality-signal ${props.tone}`}>
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function QualityReviewPanel(props: {
+  incidents: QualityIncident[];
+  onDecision: (incidentId: string, decision: string) => void;
+  onSelect: (incidentId: string) => void;
+  openCount: number;
+  reviewDecisions: Record<string, string>;
+  selectedIncident: QualityIncident | null;
+}) {
+  return (
+    <section className="admin-panel wide">
+      <div className="monitor-header">
+        <div>
+          <p className="eyebrow">Quality</p>
+          <h2>Answer review inbox</h2>
+          <p className="status-copy">
+            Recent non-grounded answers with validation, retrieval, tool calls, and review action.
+          </p>
+        </div>
+        <div className={props.openCount > 0 ? "review-count-pill warning" : "review-count-pill ok"}>
+          {formatNumber(props.openCount)} open
+        </div>
+      </div>
+
+      {props.incidents.length === 0 ? (
+        <div className="review-empty">
+          <ShieldCheck className="h-5 w-5" />
+          <div>
+            <h3>No quality incidents in the last 30 days.</h3>
+            <p className="muted-copy">
+              When an answer is unsupported or partly supported, it will appear here with its trace.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="review-console">
+          <div className="review-inbox" aria-label="Quality incidents">
+            {props.incidents.map((incident) => {
+              const decision = props.reviewDecisions[incident.id];
+              const isSelected = props.selectedIncident?.id === incident.id;
+
+              return (
+                <button
+                  className={isSelected ? "review-row active" : "review-row"}
+                  key={incident.id}
+                  onClick={() => props.onSelect(incident.id)}
+                  type="button"
+                >
+                  <span className={`review-status ${incident.status}`}>
+                    {formatValidationStatus(incident.status)}
+                  </span>
+                  <strong>
+                    {truncateText(
+                      incident.userQuestion || incident.conversationTitle || incident.answer,
+                      110,
+                    )}
+                  </strong>
+                  <small>
+                    {incident.userLabel} - {formatDateTime(incident.createdAt)} -{" "}
+                    {formatNumber(incident.retrievalResultCount)} sources -{" "}
+                    {decision
+                      ? formatReviewDecision(decision)
+                      : formatReviewPriority(incident.reviewPriority)}
+                  </small>
+                </button>
+              );
+            })}
+          </div>
+
+          <ReviewDetail
+            incident={props.selectedIncident}
+            reviewDecision={
+              props.selectedIncident ? props.reviewDecisions[props.selectedIncident.id] : undefined
+            }
+            onDecision={props.onDecision}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReviewDetail(props: {
+  incident: QualityIncident | null;
+  onDecision: (incidentId: string, decision: string) => void;
+  reviewDecision: string | undefined;
+}) {
+  if (!props.incident) {
+    return (
+      <div className="review-detail empty">
+        <p className="muted-copy">Select an incident to inspect the answer trace.</p>
+      </div>
+    );
+  }
+  const incident = props.incident;
+
+  return (
+    <div className="review-detail">
+      <div className="review-detail-header">
+        <div>
+          <span className={`review-priority ${incident.reviewPriority}`}>
+            {formatReviewPriority(incident.reviewPriority)}
+          </span>
+          <h3>{formatValidationStatus(incident.status)}</h3>
+        </div>
+        <span className="review-meta">{formatConfidence(incident.validationConfidence)}</span>
+      </div>
+
+      <div className="review-actions" aria-label="Review decision">
+        {REVIEW_ACTIONS.map((action) => (
+          <button
+            className={
+              props.reviewDecision === action.value ? "review-action active" : "review-action"
+            }
+            key={action.value}
+            onClick={() => props.onDecision(incident.id, action.value)}
+            type="button"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="review-detail-section">
+        <p className="eyebrow">Question</p>
+        <p className="review-copy">{incident.userQuestion || "Question not captured."}</p>
+      </div>
+
+      <div className="review-detail-section">
+        <p className="eyebrow">Final answer</p>
+        <p className="review-copy scrollable">{incident.answer}</p>
+      </div>
+
+      {incident.draftAnswer ? (
+        <div className="review-detail-section">
+          <p className="eyebrow">Original draft before guardrail</p>
+          <p className="review-copy scrollable">{incident.draftAnswer}</p>
+        </div>
+      ) : null}
+
+      <div className="review-detail-section">
+        <p className="eyebrow">Validation findings</p>
+        <ReviewList
+          emptyLabel="No validator issues were recorded."
+          items={[...incident.issues, ...incident.requiredCaveats]}
+        />
+      </div>
+
+      <div className="review-detail-section">
+        <p className="eyebrow">Evidence trail</p>
+        {incident.trace.toolCalls.length === 0 ? (
+          <p className="muted-copy">No tool calls were recorded for this answer.</p>
+        ) : (
+          <div className="trace-step-list">
+            {incident.trace.toolCalls.map((toolCall, index) => (
+              <TraceStep key={`${toolCall.toolName}-${index}`} toolCall={toolCall} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="review-detail-section compact">
+        <p className="eyebrow">Production handles</p>
+        <div className="review-handle-grid">
+          <span>
+            Message <strong>{truncateText(incident.messageId, 8)}</strong>
+          </span>
+          <span>
+            Conversation <strong>{truncateText(incident.conversationId, 8)}</strong>
+          </span>
+          <span>
+            Model <strong>{incident.modelDeployment || "-"}</strong>
+          </span>
+          <span>
+            User <strong>{incident.userLabel}</strong>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewList(props: { emptyLabel: string; items: string[] }) {
+  if (props.items.length === 0) {
+    return <p className="muted-copy">{props.emptyLabel}</p>;
+  }
+
+  return (
+    <ul className="review-list">
+      {props.items.map((item, index) => (
+        <li key={`${item}-${index}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function TraceStep(props: { toolCall: QualityTraceToolCall }) {
+  const argumentSummary = getToolArgumentSummary(props.toolCall);
+  const outputSummary = getToolOutputSummary(props.toolCall);
+  const sourcePreviews = getSourcePreviews(props.toolCall);
+
+  return (
+    <div className="trace-step">
+      <div className="trace-step-header">
+        <strong>{formatJobName(props.toolCall.toolName)}</strong>
+        <span
+          className={props.toolCall.status === "failed" ? "trace-status failed" : "trace-status"}
+        >
+          {formatStatus(props.toolCall.status)}
+        </span>
+      </div>
+      {props.toolCall.reason ? <p>{props.toolCall.reason}</p> : null}
+      {argumentSummary ? <small>{argumentSummary}</small> : null}
+      {outputSummary ? <small>{outputSummary}</small> : null}
+      {props.toolCall.latencyMs ? <small>{formatLatency(props.toolCall.latencyMs)}</small> : null}
+      {props.toolCall.error ? (
+        <p className="trace-error">
+          {props.toolCall.error.code}: {props.toolCall.error.message}
+        </p>
+      ) : null}
+      {sourcePreviews.length > 0 ? (
+        <div className="source-preview-list">
+          {sourcePreviews.map((source, index) => (
+            <div className="source-preview" key={`${source.chunkId}-${index}`}>
+              <strong>{source.documentTitle}</strong>
+              <p>{truncateText(source.content, 220)}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -493,6 +873,156 @@ function formatValidationStatus(value: string): string {
     default:
       return titleCase(value);
   }
+}
+
+function formatConfidence(value: number): string {
+  if (value <= 0) {
+    return "-";
+  }
+
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatDateTime(value: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleString("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+  });
+}
+
+function formatShortDate(value: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatReviewDecision(value: string): string {
+  switch (value) {
+    case "bad_answer":
+      return "Bad answer";
+    case "retrieval_issue":
+      return "Retrieval issue";
+    case "resolved":
+      return "Resolved";
+    case "validator_false_alarm":
+      return "Validator false alarm";
+    default:
+      return titleCase(value);
+  }
+}
+
+function formatReviewPriority(value: string): string {
+  switch (value) {
+    case "high":
+      return "High priority";
+    case "medium":
+      return "Medium priority";
+    case "low":
+      return "Low priority";
+    default:
+      return titleCase(value);
+  }
+}
+
+function getToolArgumentSummary(toolCall: QualityTraceToolCall): string {
+  const args = asReviewRecord(toolCall.arguments);
+  const query = asReviewString(args.query);
+  const operation = asReviewString(args.operation);
+  const expression = asReviewString(args.expression);
+
+  if (query) {
+    return `Query: ${query}`;
+  }
+
+  if (operation) {
+    return `Operation: ${formatPurpose(operation)}`;
+  }
+
+  if (expression) {
+    return `Expression: ${expression}`;
+  }
+
+  return "";
+}
+
+function getToolOutputSummary(toolCall: QualityTraceToolCall): string {
+  const output = asReviewRecord(toolCall.output);
+  const results = asReviewRecordArray(output.results);
+  const rows = asReviewRecordArray(output.rows);
+
+  if (results.length > 0) {
+    return `${formatNumber(results.length)} retrieved chunks`;
+  }
+
+  if (rows.length > 0) {
+    return `${formatNumber(rows.length)} rows returned`;
+  }
+
+  return "";
+}
+
+function getSourcePreviews(toolCall: QualityTraceToolCall) {
+  const output = asReviewRecord(toolCall.output);
+
+  return asReviewRecordArray(output.results)
+    .slice(0, 3)
+    .map((result) => ({
+      chunkId: asReviewString(result.chunkId),
+      content: asReviewString(result.chunkContent),
+      documentTitle: asReviewString(result.documentTitle) || "Retrieved source",
+    }))
+    .filter((source) => source.content.length > 0);
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function asReviewRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asReviewRecordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(asReviewRecord).filter((record) => Object.keys(record).length > 0);
+}
+
+function asReviewString(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 function titleCase(value: string): string {

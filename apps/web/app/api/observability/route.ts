@@ -12,6 +12,8 @@ interface ToolExecutionResponse {
 }
 
 const operations = [
+  "answer_quality_incidents",
+  "answer_quality_trend",
   "answer_validation_summary",
   "llm_usage_summary",
   "tool_execution_summary",

@@ -241,16 +241,51 @@ export async function recordRequestMetrics(pool: Pool, input: RequestMetricInput
   ]);
 }
 
+/**
+ * Per-model Azure OpenAI pricing (USD per 1k tokens, June 2026 public rates).
+ * Matched by substring against the deployment name — covers common naming conventions
+ * like "gpt-4o-mini", "my-gpt4omini-deployment", etc.
+ *
+ * Update these when Azure adjusts pricing or when you add new deployments.
+ * Source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
+ */
+const MODEL_PRICING: Array<{
+  match: string;
+  promptPer1k: number;
+  completionPer1k: number;
+}> = [
+  // gpt-4o-mini — fast/cheap model used for planning, validation, reranking
+  { match: "gpt-4o-mini", promptPer1k: 0.00015, completionPer1k: 0.0006 },
+  // gpt-4o — reasoning model used for answer synthesis
+  { match: "gpt-4o", promptPer1k: 0.0025, completionPer1k: 0.01 },
+  // text-embedding-3-small — embedding model (completion is always 0)
+  { match: "text-embedding-3-small", promptPer1k: 0.00002, completionPer1k: 0 },
+  // text-embedding-3-large
+  { match: "text-embedding-3-large", promptPer1k: 0.00013, completionPer1k: 0 },
+  // text-embedding-ada-002 (legacy)
+  { match: "text-embedding-ada", promptPer1k: 0.0001, completionPer1k: 0 },
+];
+
 export function estimateLlmCostUsd(
   input: LlmCostInput,
   settings: LlmCostSettings,
 ): number | undefined {
-  if (settings.promptCostPer1kTokens <= 0 && settings.completionCostPer1kTokens <= 0) {
+  // Resolve model-specific rates first; fall back to globally configured rates.
+  // This ensures gpt-4o synthesis calls are priced correctly even when the
+  // global env var is set to the cheaper gpt-4o-mini rate.
+  const deployment = input.modelDeployment.toLowerCase();
+  const modelRates = MODEL_PRICING.find((p) => deployment.includes(p.match));
+
+  const promptRate = modelRates?.promptPer1k ?? settings.promptCostPer1kTokens;
+  const completionRate = modelRates?.completionPer1k ?? settings.completionCostPer1kTokens;
+
+  // If both rates are zero (not configured and no model match), skip cost recording
+  if (promptRate <= 0 && completionRate <= 0) {
     return undefined;
   }
 
-  const promptCost = (input.promptTokens / 1000) * settings.promptCostPer1kTokens;
-  const completionCost = (input.completionTokens / 1000) * settings.completionCostPer1kTokens;
+  const promptCost = (input.promptTokens / 1000) * promptRate;
+  const completionCost = (input.completionTokens / 1000) * completionRate;
   return Number((promptCost + completionCost).toFixed(8));
 }
 

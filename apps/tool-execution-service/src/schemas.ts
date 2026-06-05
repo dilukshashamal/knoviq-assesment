@@ -30,6 +30,8 @@ export const InvoiceExtractionArgumentsSchema = z.object({
 });
 
 export const SafeSqlOperationSchema = z.enum([
+  "answer_quality_incidents",
+  "answer_quality_trend",
   "answer_validation_summary",
   "document_count",
   "list_documents",
