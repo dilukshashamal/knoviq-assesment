@@ -215,6 +215,7 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
           completed_at
         FROM knoviq.tool_executions
         WHERE tenant_id = $1
+          AND status <> 'running'
           AND ($2::text IS NULL OR status::text = $2)
           AND ($3::timestamptz IS NULL OR created_at >= $3)
           AND ($4::timestamptz IS NULL OR created_at < $4)
@@ -243,6 +244,7 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
         WHERE tenant_id = $1
           AND ($2::timestamptz IS NULL OR created_at >= $2)
           AND ($3::timestamptz IS NULL OR created_at < $3)
+          AND status <> 'running'
         GROUP BY tool_name, status
         ORDER BY tool_name, status
       `,

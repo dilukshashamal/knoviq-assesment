@@ -5,6 +5,31 @@ import type { ToolName } from "./schemas.js";
 export class ToolExecutionRepository {
   constructor(private readonly pool: Pool) {}
 
+  /**
+   * Marks any executions still in 'running' state as 'failed'.
+   * Called once at service startup to recover from rows that were left
+   * in-flight when the previous process was killed or crashed.
+   *
+   * Uses a threshold of 10 minutes — anything older than that cannot
+   * possibly be a legitimate in-flight execution on the current process.
+   */
+  async recoverStaleExecutions(): Promise<number> {
+    const result = await this.pool.query(
+      `
+        UPDATE knoviq.tool_executions
+        SET status       = 'failed',
+            error_code   = 'process_interrupted',
+            error_message = 'Execution was interrupted when the service process restarted.',
+            completed_at  = now(),
+            latency_ms    = EXTRACT(EPOCH FROM (now() - started_at))::int * 1000
+        WHERE status = 'running'
+          AND started_at < now() - INTERVAL '10 minutes'
+        RETURNING id
+      `,
+    );
+    return result.rowCount ?? 0;
+  }
+
   async startExecution(input: {
     arguments: unknown;
     conversationId: string | undefined;
