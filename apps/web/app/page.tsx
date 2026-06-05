@@ -12,12 +12,7 @@ import {
 } from "@/lib/session";
 
 import type { ApiErrorBody, ChatResponse, ChatThread, DocumentSummary } from "./types";
-import {
-  extractApiMessage,
-  formatSourceCount,
-  getErrorMessage,
-  isChatResponse,
-} from "./ui-utils";
+import { extractApiMessage, formatSourceCount, getErrorMessage, isChatResponse } from "./ui-utils";
 import { AuthForm } from "./components/AuthForm";
 import { DocumentPanel } from "./components/DocumentPanel";
 import { MessageBubble, TypingIndicator } from "./components/MessageBubble";
@@ -27,7 +22,13 @@ import { StartWorkspace } from "./components/StartWorkspace";
 
 function createThread(): ChatThread {
   const now = new Date().toISOString();
-  return { createdAt: now, id: crypto.randomUUID(), messages: [], title: "New document chat", updatedAt: now };
+  return {
+    createdAt: now,
+    id: crypto.randomUUID(),
+    messages: [],
+    title: "New document chat",
+    updatedAt: now,
+  };
 }
 
 function titleFromMessage(message: string): string {
@@ -181,7 +182,10 @@ export default function HomePage() {
   }
 
   async function handleDeleteDocument(document: DocumentSummary) {
-    if (!accessToken) { setUploadStatus("Sign in before deleting."); return; }
+    if (!accessToken) {
+      setUploadStatus("Sign in before deleting.");
+      return;
+    }
     if (!window.confirm(`Delete "${document.title}"?`)) return;
     setDocumentsLoading(true);
     setUploadStatus(null);
@@ -231,7 +235,12 @@ export default function HomePage() {
   async function restoreConversationHistory(token: string, userId: string) {
     try {
       const result = await requestJson<{
-        conversations: Array<{ id: string; title: string | null; lastMessageAt: string; createdAt: string }>;
+        conversations: Array<{
+          id: string;
+          title: string | null;
+          lastMessageAt: string;
+          createdAt: string;
+        }>;
       }>("/api/conversations", {
         headers: { authorization: `Bearer ${token}` },
       });
@@ -267,7 +276,10 @@ export default function HomePage() {
     const fresh = createThread();
     const defaultState = { activeThreadId: fresh.id, threads: [fresh] };
     const stored = window.localStorage.getItem(threadStorageKey(userId));
-    if (!stored) { setThreadState(defaultState); return; }
+    if (!stored) {
+      setThreadState(defaultState);
+      return;
+    }
     try {
       const parsed = JSON.parse(stored) as { activeThreadId: string; threads: ChatThread[] };
       setThreadState(parsed.threads.length > 0 ? parsed : defaultState);
@@ -281,7 +293,10 @@ export default function HomePage() {
 
   function handleNewChat() {
     const thread = createThread();
-    setThreadState((current) => ({ activeThreadId: thread.id, threads: [thread, ...current.threads] }));
+    setThreadState((current) => ({
+      activeThreadId: thread.id,
+      threads: [thread, ...current.threads],
+    }));
     setChatInput("");
     setChatStatus(null);
   }
@@ -293,7 +308,8 @@ export default function HomePage() {
         const fresh = createThread();
         return { activeThreadId: fresh.id, threads: [fresh] };
       }
-      const nextId = current.activeThreadId === threadId ? (remaining[0]?.id ?? "") : current.activeThreadId;
+      const nextId =
+        current.activeThreadId === threadId ? (remaining[0]?.id ?? "") : current.activeThreadId;
       return { activeThreadId: nextId, threads: remaining };
     });
   }
@@ -314,7 +330,10 @@ export default function HomePage() {
 
   async function handleChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!accessToken) { setChatStatus("Sign in before asking the assistant."); return; }
+    if (!accessToken) {
+      setChatStatus("Sign in before asking the assistant.");
+      return;
+    }
     const trimmed = chatInput.trim();
     if (!trimmed || !activeThread) return;
 
@@ -330,7 +349,9 @@ export default function HomePage() {
         createThread();
       const updated: ChatThread = {
         ...existing,
-        ...(threadBeforeRun.conversationId ? { conversationId: threadBeforeRun.conversationId } : {}),
+        ...(threadBeforeRun.conversationId
+          ? { conversationId: threadBeforeRun.conversationId }
+          : {}),
         messages: [
           ...existing.messages,
           { content: trimmed, createdAt: now, id: crypto.randomUUID(), role: "user" as const },
@@ -350,7 +371,9 @@ export default function HomePage() {
     let timeoutId: number | undefined;
     try {
       const body = JSON.stringify({
-        ...(threadBeforeRun.conversationId ? { conversationId: threadBeforeRun.conversationId } : {}),
+        ...(threadBeforeRun.conversationId
+          ? { conversationId: threadBeforeRun.conversationId }
+          : {}),
         message: trimmed,
       });
 
@@ -366,8 +389,14 @@ export default function HomePage() {
 
       if (!response.ok) {
         let errorMsg = `Request failed (${response.status.toString()})`;
-        try { errorMsg = extractApiMessage(JSON.parse(await response.text()) as ApiErrorBody, response.status); }
-        catch { /* ignore */ }
+        try {
+          errorMsg = extractApiMessage(
+            JSON.parse(await response.text()) as ApiErrorBody,
+            response.status,
+          );
+        } catch {
+          /* ignore */
+        }
         throw new Error(errorMsg);
       }
 
@@ -390,12 +419,20 @@ export default function HomePage() {
         if (eventType === "done") return;
         if (eventType === "error") {
           let msg = "Streaming chat failed";
-          try { msg = extractApiMessage(JSON.parse(rawData) as ApiErrorBody, 500); } catch { /* ignore */ }
+          try {
+            msg = extractApiMessage(JSON.parse(rawData) as ApiErrorBody, 500);
+          } catch {
+            /* ignore */
+          }
           throw new Error(msg);
         }
         if (eventType !== "final") return;
         let parsed: unknown;
-        try { parsed = JSON.parse(rawData); } catch { return; }
+        try {
+          parsed = JSON.parse(rawData);
+        } catch {
+          return;
+        }
         if (!isChatResponse(parsed)) return;
         finalResult = parsed;
         // Patch placeholder + conversationId atomically
@@ -409,7 +446,12 @@ export default function HomePage() {
                   conversationId: finalResult!.conversationId,
                   messages: thread.messages.map((msg) =>
                     msg.id === assistantId
-                      ? { ...msg, content: finalResult!.answer, toolCalls: finalResult!.toolCalls, validation: finalResult!.validation }
+                      ? {
+                          ...msg,
+                          content: finalResult!.answer,
+                          toolCalls: finalResult!.toolCalls,
+                          validation: finalResult!.validation,
+                        }
                       : msg,
                   ),
                 },
@@ -419,7 +461,11 @@ export default function HomePage() {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) { const tail = decoder.decode(); if (tail) buffer += tail; break; }
+        if (done) {
+          const tail = decoder.decode();
+          if (tail) buffer += tail;
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const blocks = buffer.split("\n\n");
         buffer = blocks.pop() ?? "";
@@ -429,7 +475,10 @@ export default function HomePage() {
       if (!finalResult) throw new Error("No answer received from the assistant. Please retry.");
       setChatStatus("Answer ready.");
     } catch (error) {
-      upsertThread((current) => ({ ...current, messages: current.messages.filter((m) => m.id !== assistantId) }));
+      upsertThread((current) => ({
+        ...current,
+        messages: current.messages.filter((m) => m.id !== assistantId),
+      }));
       setChatStatus(getErrorMessage(error));
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
@@ -444,7 +493,9 @@ export default function HomePage() {
       {/* Left rail — navigation + auth */}
       <aside className="chat-rail">
         <div className="brand-lockup">
-          <div className="brand-mark"><Sparkles className="h-5 w-5" /></div>
+          <div className="brand-mark">
+            <Sparkles className="h-5 w-5" />
+          </div>
           <div className="min-w-0">
             <p className="brand-name">Knoviq</p>
             <p className="brand-subtitle">Document chat</p>
@@ -464,7 +515,9 @@ export default function HomePage() {
           <div className="thread-list">
             {threadState.threads.map((thread) => (
               <div
-                className={thread.id === threadState.activeThreadId ? "thread-item active" : "thread-item"}
+                className={
+                  thread.id === threadState.activeThreadId ? "thread-item active" : "thread-item"
+                }
                 key={thread.id}
               >
                 <button
@@ -545,7 +598,8 @@ export default function HomePage() {
           ) : (
             <StartWorkspace accessToken={accessToken} documents={documents} />
           )}
-          {chatLoading && !activeThread?.messages.some((m) => m.role === "assistant" && m.content === "") ? (
+          {chatLoading &&
+          !activeThread?.messages.some((m) => m.role === "assistant" && m.content === "") ? (
             <TypingIndicator />
           ) : null}
           <div ref={messagesEndRef} />

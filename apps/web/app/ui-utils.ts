@@ -123,9 +123,7 @@ function parseRetrievalResults(output: unknown): SourceReference[] {
       typeof record.documentTitle === "string" ? record.documentTitle : "Uploaded document";
     const pageStart = typeof record.sourcePageStart === "number" ? record.sourcePageStart : null;
     const excerpt =
-      typeof record.chunkContent === "string"
-        ? truncateText(record.chunkContent, 220)
-        : undefined;
+      typeof record.chunkContent === "string" ? truncateText(record.chunkContent, 220) : undefined;
     return [
       {
         chunkId,

@@ -18,10 +18,14 @@ interface ConversationRow extends QueryResultRow {
 export class AiGatewayRepository {
   constructor(private readonly pool: Pool) {}
 
-  async listConversations(input: {
-    tenantId: string;
-    userId: string;
-  }): Promise<{ conversations: Array<{ id: string; title: string | null; lastMessageAt: string; createdAt: string }> }> {
+  async listConversations(input: { tenantId: string; userId: string }): Promise<{
+    conversations: Array<{
+      id: string;
+      title: string | null;
+      lastMessageAt: string;
+      createdAt: string;
+    }>;
+  }> {
     const result = await this.pool.query<{
       id: string;
       title: string | null;

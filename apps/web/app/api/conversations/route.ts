@@ -1,4 +1,9 @@
-import { backendUnavailable, backendUrls, bearerHeaders, forwardJsonResponse } from "../_lib/backend";
+import {
+  backendUnavailable,
+  backendUrls,
+  bearerHeaders,
+  forwardJsonResponse,
+} from "../_lib/backend";
 
 export const dynamic = "force-dynamic";
 
