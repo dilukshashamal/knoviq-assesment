@@ -527,7 +527,14 @@ function isPureConversationalGreeting(message: string): boolean {
 }
 
 function shouldUseInvoiceWorkflow(message: string): boolean {
-  return /\binvoices?\b/.test(message);
+  const hasInvoiceTerm = /\binvoices?\b/.test(message);
+  const hasAggregationIntent =
+    /\b(month|summarize|summary|total|sum|calculate|expenses?|report|breakdown)\b/.test(message);
+  const hasPeriodSignal =
+    /\b(20\d{2}[-/]\d{1,2}|january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|quarter|ytd|this year|last year|last month|this month)\b/.test(
+      message,
+    );
+  return hasInvoiceTerm && (hasAggregationIntent || hasPeriodSignal);
 }
 
 function buildInvoiceRetrievalQuery(message: string): string {

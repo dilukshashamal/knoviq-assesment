@@ -29,7 +29,7 @@ startOpenTelemetry({
 const settings = loadAuthSettings();
 const logger = createServiceLogger({ serviceName });
 const pool = createPgPool();
-const app = buildAuthApp({
+const app = await buildAuthApp({
   config,
   pool,
   settings,

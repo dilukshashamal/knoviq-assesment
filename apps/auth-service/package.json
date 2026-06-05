@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/rate-limit": "9.1.0",
     "@knoviq/auth": "workspace:*",
     "@knoviq/config": "workspace:*",
     "@knoviq/contracts": "workspace:*",

@@ -23,19 +23,29 @@ function getRequestMetadata(request: FastifyRequest): RequestMetadata {
 }
 
 export function registerAuthRoutes(app: FastifyInstance, authService: AuthService) {
-  app.post("/auth/register", async (request, reply) => {
+  // Tight rate limit on credential endpoints: 10 attempts per minute per IP
+  const credentialRateLimit = {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: "1 minute",
+      },
+    },
+  };
+
+  app.post("/auth/register", credentialRateLimit, async (request, reply) => {
     const body = RegisterRequestSchema.parse(request.body);
     const response = await authService.register(body, getRequestMetadata(request));
     return reply.status(201).send(response);
   });
 
-  app.post("/auth/login", async (request, reply) => {
+  app.post("/auth/login", credentialRateLimit, async (request, reply) => {
     const body = LoginRequestSchema.parse(request.body);
     const response = await authService.login(body, getRequestMetadata(request));
     return reply.send(response);
   });
 
-  app.post("/auth/refresh", async (request, reply) => {
+  app.post("/auth/refresh", credentialRateLimit, async (request, reply) => {
     const body = RefreshTokenRequestSchema.parse(request.body);
     const response = await authService.refresh(body.refreshToken, getRequestMetadata(request));
     return reply.send(response);

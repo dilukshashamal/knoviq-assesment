@@ -181,6 +181,53 @@ export class AiGatewayRepository {
     });
   }
 
+  /**
+   * Writes one row per retrieved chunk into message_citations.
+   * Called after the assistant message is created so the messageId is available.
+   * Errors are swallowed — citation logging is best-effort and must never break
+   * the chat response path.
+   */
+  async recordMessageCitations(input: {
+    messageId: string;
+    tenantId: string;
+    toolCalls: ExecutedToolCall[];
+  }): Promise<void> {
+    const citations = extractCitationsFromToolCalls(input.toolCalls);
+
+    if (citations.length === 0) {
+      return;
+    }
+
+    try {
+      for (const citation of citations) {
+        await this.pool.query(
+          `
+            INSERT INTO knoviq.message_citations (
+              tenant_id,
+              message_id,
+              document_id,
+              chunk_id,
+              relevance_score,
+              quote
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (message_id, chunk_id) DO NOTHING
+          `,
+          [
+            input.tenantId,
+            input.messageId,
+            citation.documentId,
+            citation.chunkId,
+            citation.relevanceScore,
+            citation.quote,
+          ],
+        );
+      }
+    } catch {
+      // Best-effort: citation persistence must not fail the chat response
+    }
+  }
+
   async recordLlmUsage(input: {
     cached?: boolean;
     conversationId: string;
@@ -237,4 +284,53 @@ export class AiGatewayRepository {
 function makeConversationTitle(message: string): string {
   const normalized = message.replace(/\s+/g, " ").trim();
   return normalized.slice(0, 80) || "New conversation";
+}
+
+interface CitationRecord {
+  chunkId: string;
+  documentId: string;
+  quote: string | null;
+  relevanceScore: number | null;
+}
+
+function extractCitationsFromToolCalls(toolCalls: ExecutedToolCall[]): CitationRecord[] {
+  const seen = new Set<string>();
+  const citations: CitationRecord[] = [];
+
+  for (const tc of toolCalls) {
+    if (tc.toolName !== "knowledge.retrieve" || tc.status !== "succeeded") {
+      continue;
+    }
+
+    const output = tc.output as
+      | {
+          results?: Array<{
+            chunkId?: string;
+            documentId?: string;
+            chunkContent?: string;
+            score?: number;
+          }>;
+        }
+      | undefined;
+
+    for (const result of output?.results ?? []) {
+      if (!result.chunkId || !result.documentId) {
+        continue;
+      }
+
+      if (seen.has(result.chunkId)) {
+        continue;
+      }
+
+      seen.add(result.chunkId);
+      citations.push({
+        chunkId: result.chunkId,
+        documentId: result.documentId,
+        quote: result.chunkContent?.slice(0, 500) ?? null,
+        relevanceScore: typeof result.score === "number" ? result.score : null,
+      });
+    }
+  }
+
+  return citations;
 }

@@ -58,7 +58,137 @@ services:
     volumes:
       - kafka-data:/tmp/kraft-combined-logs
 
+  # ── Application services (profile: app) ────────────────────────────────────
+  # Start with: docker compose --profile app up -d
+  # Or together with infra: docker compose --profile app up -d
+
+  auth-service:
+    profiles: ["app"]
+    image: knoviq/auth-service:0.1.0
+    container_name: knoviq-auth
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+      args:
+        SERVICE_PACKAGE: "@knoviq/auth-service"
+    restart: unless-stopped
+    ports:
+      - "${AUTH_SERVICE_PORT:-4001}:4001"
+    env_file: .env
+    environment:
+      AUTH_SERVICE_PORT: "4001"
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-knoviq}:${POSTGRES_PASSWORD:-knoviq_dev_password}@postgres:5432/${POSTGRES_DB:-knoviq}
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  knowledge-service:
+    profiles: ["app"]
+    image: knoviq/knowledge-service:0.1.0
+    container_name: knoviq-knowledge
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+      args:
+        SERVICE_PACKAGE: "@knoviq/knowledge-service"
+    restart: unless-stopped
+    ports:
+      - "${KNOWLEDGE_SERVICE_PORT:-4003}:4003"
+    env_file: .env
+    environment:
+      KNOWLEDGE_SERVICE_PORT: "4003"
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-knoviq}:${POSTGRES_PASSWORD:-knoviq_dev_password}@postgres:5432/${POSTGRES_DB:-knoviq}
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+    volumes:
+      - knowledge-uploads:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  tool-execution-service:
+    profiles: ["app"]
+    image: knoviq/tool-execution-service:0.1.0
+    container_name: knoviq-tools
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+      args:
+        SERVICE_PACKAGE: "@knoviq/tool-execution-service"
+    restart: unless-stopped
+    ports:
+      - "${TOOL_EXECUTION_SERVICE_PORT:-4004}:4004"
+    env_file: .env
+    environment:
+      TOOL_EXECUTION_SERVICE_PORT: "4004"
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-knoviq}:${POSTGRES_PASSWORD:-knoviq_dev_password}@postgres:5432/${POSTGRES_DB:-knoviq}
+      KAFKA_BROKERS: kafka:9092
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:4003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ai-gateway:
+    profiles: ["app"]
+    image: knoviq/ai-gateway:0.1.0
+    container_name: knoviq-ai-gateway
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+      args:
+        SERVICE_PACKAGE: "@knoviq/ai-gateway"
+    restart: unless-stopped
+    ports:
+      - "${AI_GATEWAY_PORT:-4002}:4002"
+    env_file: .env
+    environment:
+      AI_GATEWAY_PORT: "4002"
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-knoviq}:${POSTGRES_PASSWORD:-knoviq_dev_password}@postgres:5432/${POSTGRES_DB:-knoviq}
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      TOOL_EXECUTION_SERVICE_URL: http://tool-execution-service:4004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tool-execution-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres18-data:
   redis-data:
   kafka-data:
+  knowledge-uploads:

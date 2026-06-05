@@ -19,7 +19,17 @@ export function registerChatRoutes(
   agentRunner: AgentRunner,
   settings: AiGatewaySettings,
 ) {
-  app.post("/chat", { preHandler: app.authenticate }, async (request) => {
+  // Chat endpoints are LLM-backed and expensive — 30 requests per minute per IP
+  const chatRateLimit = {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: "1 minute",
+      },
+    },
+  };
+
+  app.post("/chat", { preHandler: app.authenticate, ...chatRateLimit }, async (request) => {
     const principal = requirePrincipal(request);
     const body = ChatRequestSchema.parse(request.body);
 
@@ -42,46 +52,50 @@ export function registerChatRoutes(
     );
   });
 
-  app.post("/chat/stream", { preHandler: app.authenticate }, async (request, reply) => {
-    const principal = requirePrincipal(request);
-    const body = ChatRequestSchema.parse(request.body);
+  app.post(
+    "/chat/stream",
+    { preHandler: app.authenticate, ...chatRateLimit },
+    async (request, reply) => {
+      const principal = requirePrincipal(request);
+      const body = ChatRequestSchema.parse(request.body);
 
-    if (!request.accessToken) {
-      throw unauthorized();
-    }
+      if (!request.accessToken) {
+        throw unauthorized();
+      }
 
-    reply.hijack();
-    prepareSse(reply);
+      reply.hijack();
+      prepareSse(reply);
 
-    try {
-      const runInput = {
-        accessToken: request.accessToken,
-        emit: async (event: AgentRunEvent) => {
-          writeSse(reply, event);
-        },
-        message: body.message,
-        requestId: request.id,
-        tenantId: principal.tenantId,
-        userId: principal.userId,
-      };
+      try {
+        const runInput = {
+          accessToken: request.accessToken,
+          emit: async (event: AgentRunEvent) => {
+            writeSse(reply, event);
+          },
+          message: body.message,
+          requestId: request.id,
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+        };
 
-      await agentRunner.run(
-        body.conversationId === undefined
-          ? runInput
-          : { ...runInput, conversationId: body.conversationId },
-      );
-      writeSse(reply, { data: "[DONE]", type: "final" });
-    } catch (error) {
-      writeSse(reply, {
-        data: {
-          message: error instanceof Error ? error.message : "Streaming chat failed",
-        },
-        type: "error",
-      });
-    } finally {
-      reply.raw.end();
-    }
-  });
+        await agentRunner.run(
+          body.conversationId === undefined
+            ? runInput
+            : { ...runInput, conversationId: body.conversationId },
+        );
+        writeSse(reply, { data: "[DONE]", type: "final" });
+      } catch (error) {
+        writeSse(reply, {
+          data: {
+            message: error instanceof Error ? error.message : "Streaming chat failed",
+          },
+          type: "error",
+        });
+      } finally {
+        reply.raw.end();
+      }
+    },
+  );
 
   app.route({
     handler: async (_request, reply) =>

@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import type { AuthRole } from "@knoviq/auth";
 import { hasMinimumRole } from "@knoviq/auth";
 import type { ServiceConfig } from "@knoviq/config";
@@ -20,7 +21,7 @@ export interface BuildAuthAppInput {
   version: string;
 }
 
-export function buildAuthApp(input: BuildAuthAppInput) {
+export async function buildAuthApp(input: BuildAuthAppInput) {
   const serviceName = input.config.serviceName;
   const app = Fastify({
     genReqId: () => createRequestId(serviceName),
@@ -32,6 +33,15 @@ export function buildAuthApp(input: BuildAuthAppInput) {
   const authService = new AuthService(repository, input.settings);
 
   app.setErrorHandler(handleApiError);
+  await app.register(rateLimit, {
+    // Global default: 200 requests per minute per IP
+    max: 200,
+    timeWindow: "1 minute",
+    errorResponseBuilder: (_request, context) => ({
+      code: "rate_limit_exceeded",
+      message: `Too many requests. Retry after ${String(context.after)}.`,
+    }),
+  });
   registerFastifyObservability({
     app,
     pool: input.pool,

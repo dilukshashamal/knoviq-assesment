@@ -10,7 +10,7 @@
     "sourceMap": true,
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "vitest.config.ts"],
   "references": [
     { "path": "../../packages/auth" },
     { "path": "../../packages/cache" },

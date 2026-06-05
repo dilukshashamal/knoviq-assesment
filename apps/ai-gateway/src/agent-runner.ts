@@ -287,6 +287,12 @@ export class AgentRunner {
       purpose: "answer_synthesis",
       usage: synthesis.usage,
     });
+    // Persist chunk citations into message_citations table (best-effort, non-blocking)
+    await this.repository.recordMessageCitations({
+      messageId: assistantMessageId,
+      tenantId: input.tenantId,
+      toolCalls,
+    });
     await this.publishMessageCreated({
       conversationId,
       input,
@@ -624,10 +630,17 @@ function buildFollowUpToolCalls(
 }
 
 function isInvoiceWorkflowMessage(message: string): boolean {
-  return (
-    /\binvoices?\b/.test(message) &&
-    /\b(april|month|summarize|summary|total|sum|calculate|expenses?)\b/.test(message)
-  );
+  // Detect invoice workflow by the presence of invoice-related terms combined with
+  // any aggregation/period intent signal. Month names are NOT hardcoded — the period
+  // regex covers ISO dates (2026-04), any month name, and generic time words.
+  const hasInvoiceTerm = /\binvoices?\b/.test(message);
+  const hasAggregationIntent =
+    /\b(month|summarize|summary|total|sum|calculate|expenses?|report|breakdown)\b/.test(message);
+  const hasPeriodSignal =
+    /\b(20\d{2}[-/]\d{1,2}|january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|quarter|ytd|this year|last year|last month|this month)\b/.test(
+      message,
+    );
+  return hasInvoiceTerm && (hasAggregationIntent || hasPeriodSignal);
 }
 
 function extractRequestedPeriod(message: string): string | null {

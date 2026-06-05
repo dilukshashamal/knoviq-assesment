@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   BookOpen,
   CheckCircle2,
@@ -275,37 +276,108 @@ export default function HomePage() {
     setChatLoading(true);
     setChatStatus(null);
 
+    // Placeholder assistant message shown while streaming
+    const assistantId = crypto.randomUUID();
+    const assistantPlaceholder: ChatMessage = {
+      content: "",
+      createdAt: new Date().toISOString(),
+      id: assistantId,
+      role: "assistant",
+    };
+    upsertThread((current) => ({
+      ...current,
+      messages: [...current.messages, assistantPlaceholder],
+    }));
+
     try {
-      const response = await requestJson<ChatResponse>("/api/chat", {
-        body: JSON.stringify({
-          ...(threadBeforeRun.conversationId
-            ? { conversationId: threadBeforeRun.conversationId }
-            : {}),
-          message: trimmed,
-        }),
+      const body = JSON.stringify({
+        ...(threadBeforeRun.conversationId
+          ? { conversationId: threadBeforeRun.conversationId }
+          : {}),
+        message: trimmed,
+      });
+
+      const response = await fetch("/api/chat/stream", {
+        body,
         headers: {
           authorization: `Bearer ${accessToken}`,
           "content-type": "application/json",
         },
         method: "POST",
       });
-      const assistantMessage: ChatMessage = {
-        content: response.answer,
-        createdAt: new Date().toISOString(),
-        id: crypto.randomUUID(),
-        role: "assistant",
-        toolCalls: response.toolCalls,
-        validation: response.validation,
-      };
 
-      upsertThread((current) => ({
-        ...current,
-        conversationId: response.conversationId,
-        messages: [...current.messages, assistantMessage],
-        updatedAt: assistantMessage.createdAt,
-      }));
+      if (!response.ok || !response.body) {
+        const text = await response.text();
+        let errorMsg = `Request failed (${response.status.toString()})`;
+        try {
+          const parsed = JSON.parse(text) as ApiErrorBody;
+          errorMsg = extractApiMessage(parsed, response.status);
+        } catch {
+          // ignore parse error
+        }
+        throw new Error(errorMsg);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalResult: ChatResponse | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE lines: "event: <type>\ndata: <json>\n\n"
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          let eventType = "";
+          let dataLine = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+            if (line.startsWith("data: ")) dataLine = line.slice(6).trim();
+          }
+          if (!dataLine) continue;
+
+          if (eventType === "final" && dataLine !== "[DONE]") {
+            try {
+              finalResult = JSON.parse(dataLine) as ChatResponse;
+            } catch {
+              // ignore
+            }
+          }
+
+          // As soon as we have a final answer, update the placeholder
+          if (finalResult) {
+            upsertThreadById(assistantId, (msg) => ({
+              ...msg,
+              content: finalResult!.answer,
+              toolCalls: finalResult!.toolCalls,
+              validation: finalResult!.validation,
+            }));
+            upsertThread((current) => ({
+              ...current,
+              conversationId: finalResult!.conversationId,
+            }));
+          }
+        }
+      }
+
+      // Fallback: if SSE finished without a "final" event, use whatever arrived
+      if (!finalResult) {
+        throw new Error("Stream ended without a final answer. Please retry.");
+      }
+
       setChatStatus("Answer ready.");
     } catch (error) {
+      // Remove the empty placeholder on error
+      upsertThread((current) => ({
+        ...current,
+        messages: current.messages.filter((m) => m.id !== assistantId),
+      }));
       setChatStatus(getErrorMessage(error));
     } finally {
       setChatLoading(false);
@@ -444,6 +516,23 @@ export default function HomePage() {
     });
   }
 
+  /**
+   * Updates a single message in the active thread by its message id.
+   * Used to patch the streaming placeholder once the final answer arrives.
+   */
+  function upsertThreadById(messageId: string, updater: (msg: ChatMessage) => ChatMessage) {
+    setThreadState((current) => {
+      const threads = current.threads.map((thread) => {
+        if (thread.id !== current.activeThreadId) return thread;
+        return {
+          ...thread,
+          messages: thread.messages.map((msg) => (msg.id === messageId ? updater(msg) : msg)),
+        };
+      });
+      return { ...current, threads };
+    });
+  }
+
   return (
     <main className="app-shell">
       <aside className="chat-rail">
@@ -557,7 +646,8 @@ export default function HomePage() {
           ) : (
             <StartWorkspace accessToken={accessToken} documents={documents} />
           )}
-          {chatLoading ? (
+          {chatLoading &&
+          !activeThread?.messages.some((m) => m.role === "assistant" && m.content === "") ? (
             <article className="message-row assistant">
               <div className="message-avatar">
                 <Sparkles className="h-4 w-4" />
@@ -854,7 +944,17 @@ function MessageBubble(props: { message: ChatMessage }) {
           <span>{props.message.role === "user" ? "You" : "Knoviq"}</span>
           <span>{formatTime(props.message.createdAt)}</span>
         </div>
-        <p>{props.message.content}</p>
+        {props.message.role === "assistant" ? (
+          <div className="prose prose-sm max-w-none">
+            {props.message.content ? (
+              <ReactMarkdown>{props.message.content}</ReactMarkdown>
+            ) : (
+              <span className="text-muted-foreground italic">Thinking…</span>
+            )}
+          </div>
+        ) : (
+          <p>{props.message.content}</p>
+        )}
         {props.message.role === "assistant" ? (
           <>
             <EvidenceChip sourcesCount={sources.length} validation={props.message.validation} />

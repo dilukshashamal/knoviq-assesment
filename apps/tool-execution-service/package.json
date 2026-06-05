@@ -9,7 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "start": "node dist/server.js",
-    "test": "node -e \"console.log('No tests yet for tool-execution-service')\"",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -28,6 +28,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "vitest": "2.0.0"
   }
 }

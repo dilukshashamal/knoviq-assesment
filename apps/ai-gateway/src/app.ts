@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import rateLimit from "@fastify/rate-limit";
 import type { CacheClient } from "@knoviq/cache";
 import type { ServiceConfig } from "@knoviq/config";
 import { HealthResponseSchema } from "@knoviq/contracts";
@@ -45,6 +46,15 @@ export async function buildAiGatewayApp(input: BuildAiGatewayAppInput) {
   );
 
   app.setErrorHandler(handleApiError);
+  await app.register(rateLimit, {
+    // Global: 120 requests per minute per IP
+    max: 120,
+    timeWindow: "1 minute",
+    errorResponseBuilder: (_request, context) => ({
+      code: "rate_limit_exceeded",
+      message: `Too many requests. Retry after ${String(context.after)}.`,
+    }),
+  });
   await app.register(websocket, {
     options: {
       maxPayload: 16 * 1024,
