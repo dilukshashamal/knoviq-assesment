@@ -102,13 +102,13 @@ Each backend service is its own Fastify process with its own `pg.Pool`, its own 
 
 No service reads from another service's database tables. All cross-service access goes through HTTP APIs.
 
-| Service        | Owns tables                                                                  |
-| -------------- | ---------------------------------------------------------------------------- |
-| Auth           | `tenants`, `users`, `tenant_memberships`, `refresh_tokens`, `audit_logs`     |
-| Knowledge      | `documents`, `document_access_grants`, `document_chunks`, `embedding_cache`  |
-| AI Gateway     | `conversations`, `messages`, `message_citations`, `llm_usage`                |
-| Tool Execution | `tool_executions`                                                            |
-| All services   | `service_metrics` (each writes its own rows)                                 |
+| Service        | Owns tables                                                                 |
+| -------------- | --------------------------------------------------------------------------- |
+| Auth           | `tenants`, `users`, `tenant_memberships`, `refresh_tokens`, `audit_logs`    |
+| Knowledge      | `documents`, `document_access_grants`, `document_chunks`, `embedding_cache` |
+| AI Gateway     | `conversations`, `messages`, `message_citations`, `llm_usage`               |
+| Tool Execution | `tool_executions`                                                           |
+| All services   | `service_metrics` (each writes its own rows)                                |
 
 ---
 
@@ -188,54 +188,54 @@ Copy `.env.example` to `.env` and fill in the required values. All config is val
 
 ### Azure OpenAI (required for production)
 
-| Variable                                   | Description                                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `AZURE_OPENAI_ENDPOINT`                    | Your Azure OpenAI resource endpoint URL                                                |
-| `AZURE_OPENAI_API_KEY`                     | API key for the resource                                                               |
-| `AZURE_OPENAI_API_VERSION`                 | API version, default `2025-04-01-preview`                                              |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`        | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction     |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING`   | Reasoning model (e.g. `gpt-4o`) — answer synthesis                                     |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`        | Embedding model (e.g. `text-embedding-3-small`)                                        |
-| `AZURE_OPENAI_EMBEDDING_DIMENSIONS`        | Embedding dimensions, default `1536`                                                   |
+| Variable                                 | Description                                                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `AZURE_OPENAI_ENDPOINT`                  | Your Azure OpenAI resource endpoint URL                                            |
+| `AZURE_OPENAI_API_KEY`                   | API key for the resource                                                           |
+| `AZURE_OPENAI_API_VERSION`               | API version, default `2025-04-01-preview`                                          |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`      | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING` | Reasoning model (e.g. `gpt-4o`) — answer synthesis                                 |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`      | Embedding model (e.g. `text-embedding-3-small`)                                    |
+| `AZURE_OPENAI_EMBEDDING_DIMENSIONS`      | Embedding dimensions, default `1536`                                               |
 
 Set `KNOWLEDGE_EMBEDDING_PROVIDER=local` and `AI_GATEWAY_MODEL_PROVIDER=local` to skip Azure entirely during local smoke testing. The local providers produce deterministic vectors and rule-based responses — useful for CI, not for real RAG quality.
 
 ### Auth
 
-| Variable                 | Default  | Description                                    |
-| ------------------------ | -------- | ---------------------------------------------- |
-| `JWT_ACCESS_SECRET`      | —        | Min 32-char secret for signing access tokens   |
-| `JWT_REFRESH_SECRET`     | —        | Min 32-char secret for signing refresh tokens  |
-| `JWT_ACCESS_TTL_SECONDS` | `900`    | Access token lifetime (15 minutes)             |
+| Variable                 | Default | Description                                   |
+| ------------------------ | ------- | --------------------------------------------- |
+| `JWT_ACCESS_SECRET`      | —       | Min 32-char secret for signing access tokens  |
+| `JWT_REFRESH_SECRET`     | —       | Min 32-char secret for signing refresh tokens |
+| `JWT_ACCESS_TTL_SECONDS` | `900`   | Access token lifetime (15 minutes)            |
 
 ### Knowledge Service tuning
 
-| Variable                          | Default | Description                                             |
-| --------------------------------- | ------- | ------------------------------------------------------- |
-| `KNOWLEDGE_CHUNK_TARGET_CHARS`    | `1800`  | Target characters per chunk                             |
-| `KNOWLEDGE_CHUNK_OVERLAP_CHARS`   | `250`   | Overlap between consecutive chunks                      |
-| `KNOWLEDGE_SEARCH_LIMIT`          | `8`     | Final number of chunks returned to the agent            |
-| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2`   | Minimum cosine similarity for vector retrieval          |
-| `KNOWLEDGE_RERANK_ENABLED`        | `true`  | Enable LLM reranking after hybrid retrieval             |
+| Variable                          | Default | Description                                                |
+| --------------------------------- | ------- | ---------------------------------------------------------- |
+| `KNOWLEDGE_CHUNK_TARGET_CHARS`    | `1800`  | Target characters per chunk                                |
+| `KNOWLEDGE_CHUNK_OVERLAP_CHARS`   | `250`   | Overlap between consecutive chunks                         |
+| `KNOWLEDGE_SEARCH_LIMIT`          | `8`     | Final number of chunks returned to the agent               |
+| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2`   | Minimum cosine similarity for vector retrieval             |
+| `KNOWLEDGE_RERANK_ENABLED`        | `true`  | Enable LLM reranking after hybrid retrieval                |
 | `KNOWLEDGE_RERANK_CANDIDATES`     | `24`    | Candidate pool fed into the reranker (should be 3–4×limit) |
 
 ### Infrastructure
 
-| Variable        | Default                  | Description                            |
-| --------------- | ------------------------ | -------------------------------------- |
-| `DATABASE_URL`  | —                        | Full PostgreSQL connection string      |
-| `DB_POOL_MAX`   | `10`                     | Max pg connections per service process |
-| `REDIS_URL`     | `redis://localhost:6379` | Redis connection URL                   |
-| `REDIS_ENABLED` | `true`                   | Set `false` to disable caching         |
-| `KAFKA_ENABLED` | `true`                   | Set `false` to disable event publishing|
-| `KAFKA_BROKERS` | `127.0.0.1:29092`        | Comma-separated Kafka broker addresses |
+| Variable        | Default                  | Description                             |
+| --------------- | ------------------------ | --------------------------------------- |
+| `DATABASE_URL`  | —                        | Full PostgreSQL connection string       |
+| `DB_POOL_MAX`   | `10`                     | Max pg connections per service process  |
+| `REDIS_URL`     | `redis://localhost:6379` | Redis connection URL                    |
+| `REDIS_ENABLED` | `true`                   | Set `false` to disable caching          |
+| `KAFKA_ENABLED` | `true`                   | Set `false` to disable event publishing |
+| `KAFKA_BROKERS` | `127.0.0.1:29092`        | Comma-separated Kafka broker addresses  |
 
 ### LLM cost controls
 
-| Variable                        | Default | Description                                        |
-| ------------------------------- | ------- | -------------------------------------------------- |
-| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | `1200`  | Hard cap on synthesis response length              |
-| `LLM_MEMORY_MAX_MESSAGES`       | `12`    | Conversation history window (older messages drop)  |
+| Variable                        | Default | Description                                       |
+| ------------------------------- | ------- | ------------------------------------------------- |
+| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | `1200`  | Hard cap on synthesis response length             |
+| `LLM_MEMORY_MAX_MESSAGES`       | `12`    | Conversation history window (older messages drop) |
 
 ---
 
@@ -386,22 +386,22 @@ POST /chat  { message, conversationId? }
 
 ### 5.2 Available Tools
 
-| Tool name                          | Where it runs                            | When the planner selects it                       |
-| ---------------------------------- | ---------------------------------------- | ------------------------------------------------- |
-| `knowledge.retrieve`               | Knowledge Service `/search`              | All factual, informational, policy questions      |
-| `calculator.evaluate`              | In-process recursive descent parser      | Numeric expressions; invoice total verification   |
-| `sql.query_safe`                   | PostgreSQL (read-only, allowlisted ops)  | Usage metrics, document counts, cost reports      |
-| `document.extract_invoice_fields`  | Azure OpenAI gpt-4o-mini                 | Invoice summarisation workflows                   |
+| Tool name                         | Where it runs                           | When the planner selects it                     |
+| --------------------------------- | --------------------------------------- | ----------------------------------------------- |
+| `knowledge.retrieve`              | Knowledge Service `/search`             | All factual, informational, policy questions    |
+| `calculator.evaluate`             | In-process recursive descent parser     | Numeric expressions; invoice total verification |
+| `sql.query_safe`                  | PostgreSQL (read-only, allowlisted ops) | Usage metrics, document counts, cost reports    |
+| `document.extract_invoice_fields` | Azure OpenAI gpt-4o-mini                | Invoice summarisation workflows                 |
 
 ### 5.3 Transport Options
 
 All three transports emit identical structured step events: `conversation`, `agent_step`, `message`, `tool_start`, `tool_result`, `validation`, `final`.
 
-| Endpoint            | Transport           | Use case                       |
-| ------------------- | ------------------- | ------------------------------ |
-| `POST /chat`        | HTTP (synchronous)  | Simple clients, testing        |
-| `POST /chat/stream` | Server-Sent Events  | Web frontends                  |
-| `GET /chat/ws`      | WebSocket           | Real-time bidirectional        |
+| Endpoint            | Transport          | Use case                |
+| ------------------- | ------------------ | ----------------------- |
+| `POST /chat`        | HTTP (synchronous) | Simple clients, testing |
+| `POST /chat/stream` | Server-Sent Events | Web frontends           |
+| `GET /chat/ws`      | WebSocket          | Real-time bidirectional |
 
 ### 5.4 KB-First Planning Rule
 
@@ -433,14 +433,14 @@ All domain events (`knowledge.document.uploaded`, `conversation.created`, `agent
 
 ### LLM cost controls
 
-| Mechanism          | Implementation                                                         |
-| ------------------ | ---------------------------------------------------------------------- |
-| Token budget       | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` hard cap on synthesis output      |
-| Memory window      | `LLM_MEMORY_MAX_MESSAGES=12` — older messages dropped from context     |
-| Rerank pool size   | `KNOWLEDGE_RERANK_CANDIDATES=24` — controls LLM rerank input size      |
-| Model routing      | Planning and validation use `gpt-4o-mini`; synthesis uses `gpt-4o`     |
-| Per-model pricing  | `@knoviq/observability` maintains a built-in pricing table by deployment name substring, so `gpt-4o` synthesis is not undercharged at the `gpt-4o-mini` rate |
-| Embedding cache    | Content-hash dedup prevents re-embedding identical chunks across docs  |
+| Mechanism         | Implementation                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Token budget      | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` hard cap on synthesis output                                                                                            |
+| Memory window     | `LLM_MEMORY_MAX_MESSAGES=12` — older messages dropped from context                                                                                           |
+| Rerank pool size  | `KNOWLEDGE_RERANK_CANDIDATES=24` — controls LLM rerank input size                                                                                            |
+| Model routing     | Planning and validation use `gpt-4o-mini`; synthesis uses `gpt-4o`                                                                                           |
+| Per-model pricing | `@knoviq/observability` maintains a built-in pricing table by deployment name substring, so `gpt-4o` synthesis is not undercharged at the `gpt-4o-mini` rate |
+| Embedding cache   | Content-hash dedup prevents re-embedding identical chunks across docs                                                                                        |
 
 ### Kubernetes
 
@@ -543,40 +543,40 @@ Domain events are published to Kafka after PostgreSQL writes succeed. Kafka fail
 
 ### Auth Service (port 4001)
 
-| Method | Path              | Description                          |
-| ------ | ----------------- | ------------------------------------ |
-| `POST` | `/auth/register`  | Create user + tenant, returns tokens |
-| `POST` | `/auth/login`     | Login, returns tokens                |
-| `POST` | `/auth/refresh`   | Refresh access token                 |
-| `POST` | `/auth/logout`    | Revoke refresh token                 |
-| `GET`  | `/health`         | Health check                         |
+| Method | Path             | Description                          |
+| ------ | ---------------- | ------------------------------------ |
+| `POST` | `/auth/register` | Create user + tenant, returns tokens |
+| `POST` | `/auth/login`    | Login, returns tokens                |
+| `POST` | `/auth/refresh`  | Refresh access token                 |
+| `POST` | `/auth/logout`   | Revoke refresh token                 |
+| `GET`  | `/health`        | Health check                         |
 
 ### AI Gateway (port 4002)
 
-| Method | Path            | Description                      |
-| ------ | --------------- | -------------------------------- |
-| `POST` | `/chat`         | Synchronous chat (full response) |
-| `POST` | `/chat/stream`  | SSE streaming chat               |
-| `GET`  | `/chat/ws`      | WebSocket chat                   |
-| `GET`  | `/health`       | Health check                     |
+| Method | Path           | Description                      |
+| ------ | -------------- | -------------------------------- |
+| `POST` | `/chat`        | Synchronous chat (full response) |
+| `POST` | `/chat/stream` | SSE streaming chat               |
+| `GET`  | `/chat/ws`     | WebSocket chat                   |
+| `GET`  | `/health`      | Health check                     |
 
 ### Knowledge Service (port 4003)
 
-| Method   | Path              | Description                               |
-| -------- | ----------------- | ----------------------------------------- |
-| `POST`   | `/documents`      | Upload PDF or TXT (`multipart/form-data`) |
-| `GET`    | `/documents`      | List documents for the current tenant     |
-| `DELETE` | `/documents/:id`  | Delete document + all chunks              |
-| `POST`   | `/search`         | Hybrid BM25 + vector search               |
-| `GET`    | `/health`         | Health check                              |
+| Method   | Path             | Description                               |
+| -------- | ---------------- | ----------------------------------------- |
+| `POST`   | `/documents`     | Upload PDF or TXT (`multipart/form-data`) |
+| `GET`    | `/documents`     | List documents for the current tenant     |
+| `DELETE` | `/documents/:id` | Delete document + all chunks              |
+| `POST`   | `/search`        | Hybrid BM25 + vector search               |
+| `GET`    | `/health`        | Health check                              |
 
 ### Tool Execution Service (port 4004)
 
-| Method | Path              | Description                                |
-| ------ | ----------------- | ------------------------------------------ |
-| `GET`  | `/tools`          | Get tool definitions (for AI Gateway)      |
-| `POST` | `/tools/execute`  | Execute a named tool with arguments        |
-| `GET`  | `/health`         | Health check                               |
+| Method | Path             | Description                           |
+| ------ | ---------------- | ------------------------------------- |
+| `GET`  | `/tools`         | Get tool definitions (for AI Gateway) |
+| `POST` | `/tools/execute` | Execute a named tool with arguments   |
+| `GET`  | `/health`        | Health check                          |
 
 ---
 
