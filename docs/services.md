@@ -2,7 +2,8 @@
 
 ## Auth Service · port 4001
 
-Owns user registration, authentication, JWT issuance, refresh token rotation, and tenant/RBAC management.
+Owns user registration, authentication, JWT issuance, refresh token rotation, and tenant/RBAC
+management.
 
 ### Endpoints
 
@@ -22,7 +23,9 @@ Owns user registration, authentication, JWT issuance, refresh token rotation, an
 
 ### Security model
 
-Passwords are hashed with **Argon2id**. Refresh tokens are opaque random values; only HMAC-SHA256 hashes are stored in PostgreSQL. Access tokens are JWTs signed with HS256 via `jose` and contain `sub`, `tenant_id`, `role`, `email`, and `jti`.
+Passwords are hashed with **Argon2id**. Refresh tokens are opaque random values; only HMAC-SHA256
+hashes are stored in PostgreSQL. Access tokens are JWTs signed with HS256 via `jose` and contain
+`sub`, `tenant_id`, `role`, `email`, and `jti`.
 
 Registration creates a tenant, a user, and an `owner` membership in one transaction.
 
@@ -43,7 +46,8 @@ Role hierarchy (highest to lowest): `owner` → `admin` → `member` → `viewer
 
 ## AI Gateway · port 4002
 
-Owns chat orchestration, conversation memory, multi-agent workflow, tool calling, streaming, and answer validation.
+Owns chat orchestration, conversation memory, multi-agent workflow, tool calling, streaming, and
+answer validation.
 
 ### Endpoints
 
@@ -58,10 +62,16 @@ Owns chat orchestration, conversation memory, multi-agent workflow, tool calling
 
 Each chat turn runs four phases:
 
-1. **Planner** (`gpt-4o-mini`, temp=0) — selects tool calls from available definitions. KB-first rule: always retrieves from the knowledge base for factual questions.
-2. **Tool agents** — execute each tool call through the Tool Execution Service, with up to 4 follow-up chaining rounds.
-3. **Synthesizer** (`gpt-4o`, temp=0.1) — produces a grounded answer from chunk citations and tool outputs.
-4. **Validator** (`gpt-4o-mini`, temp=0) — checks every factual claim against retrieved chunks. Returns `grounded`, `partially_grounded`, or `unsupported`.
+1. **Planner** (`gpt-4o-mini`, temp=0) — selects tool calls from available definitions. KB-first
+   rule: always retrieves from the knowledge base for factual questions. Mandatory safety net injects
+   a retrieval call if the planner returns none.
+2. **Tool agents** — execute each tool call through the Tool Execution Service, with up to 4
+   follow-up chaining rounds.
+3. **Synthesizer** (`gpt-4o`, temp=0.1) — produces a grounded answer from chunk citations and tool
+   outputs. Raw RRF scores are excluded from the context to prevent them from being misread as
+   relevance signals.
+4. **Validator** (`gpt-4o-mini`, temp=0) — checks every factual claim against retrieved chunks.
+   Returns `grounded`, `partially_grounded`, or `unsupported`. Paraphrase counts as grounded.
 
 ### Streaming events
 
@@ -95,7 +105,8 @@ Query param (for runtimes that don't support auth headers on WS): `?accessToken=
 
 ## Knowledge Service · port 4003
 
-Owns document ingestion, text extraction, hybrid chunking, embedding generation, and hybrid semantic + keyword search.
+Owns document ingestion, text extraction, hybrid chunking, embedding generation, and hybrid
+semantic + keyword search.
 
 ### Endpoints
 
@@ -135,7 +146,8 @@ All queries filter by authenticated tenant, active membership, and one of:
 
 ## Tool Execution Service · port 4004
 
-Owns safe tool execution and execution logging. All tools are validated, parameterised, and tenant-aware.
+Owns safe tool execution and execution logging. All tools are validated, parameterised, and
+tenant-aware.
 
 ### Endpoints
 
@@ -145,36 +157,102 @@ Owns safe tool execution and execution logging. All tools are validated, paramet
 | `POST` | `/tools/execute` | Execute a named tool with validated arguments      |
 | `GET`  | `/health`        | Health check                                       |
 
+### Startup behaviour
+
+On every service startup, any tool execution rows still in `running` status and older than 10
+minutes are automatically marked `failed` with `error_code: process_interrupted`. This recovers
+orphaned rows from previous process crashes and prevents them from skewing the monitoring dashboard.
+
 ### Tools
 
 #### `knowledge.retrieve`
 
-Forwards a validated retrieval request to the Knowledge Service using the caller's access token. Preserves tenant and document access control end-to-end.
+Forwards a validated retrieval request to the Knowledge Service using the caller's access token.
+Preserves tenant and document access control end-to-end.
 
 Arguments: `query` (required), `documentIds` (optional filter), `limit`, `minSimilarity`.
 
 #### `calculator.evaluate`
 
-Safe arithmetic evaluator. Uses a custom recursive descent parser — no `eval`, no code execution. Supports `+`, `-`, `*`, `/`, `^`, and parentheses.
+Safe arithmetic evaluator. Uses a custom recursive descent parser — no `eval`, no code execution.
+Supports `+`, `-`, `*`, `/`, `^`, and parentheses.
 
 Arguments: `expression` (string), `precision` (decimal places, optional).
 
 #### `sql.query_safe`
 
-Read-only SQL against approved, parameterised operations. The LLM selects an operation name; it never provides raw SQL.
+Read-only SQL against approved, parameterised operations. The LLM selects an operation name; it
+never provides raw SQL. Completed and failed executions are returned; in-progress executions are
+excluded to avoid self-referential race conditions.
 
-Approved operations: `document_count`, `list_documents`, `llm_usage_summary`, `tool_execution_summary`, `recent_tool_executions`, `service_metric_summary`.
+Approved operations:
+
+| Operation                  | What it returns                                     |
+| -------------------------- | --------------------------------------------------- |
+| `document_count`           | Document count by status                            |
+| `list_documents`           | Recent documents with metadata                      |
+| `llm_usage_summary`        | Token counts and cost by model and purpose          |
+| `tool_execution_summary`   | Tool call counts and latency by tool and status     |
+| `recent_tool_executions`   | Latest tool calls with status and latency           |
+| `service_metric_summary`   | Request counts and latency histograms by service    |
+| `answer_validation_summary`| Answer counts by validation status and confidence   |
+| `answer_quality_incidents` | Non-grounded answers with full trace for review     |
+| `answer_quality_trend`     | Daily time series of validation status over 30 days |
 
 #### `document.extract_invoice_fields`
 
-LLM-based invoice extraction. Uses `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` to read any invoice format — expense tables, labeled PDFs, receipts, multi-currency reports — and extract:
+LLM-based invoice extraction. Uses `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` to read any invoice
+format — expense tables, labeled PDFs, receipts, multi-currency reports — and extract:
 
 - `invoiceNumber`, `vendor`, `invoiceDate`, `description`, `amount`, `currency`, `approvalStatus`
 - `grandTotal` — from the document's own verified summary section when present
 - `periodLabel` — detected period from the document
 
-Returns per-invoice rows plus an aggregated `totalAmount` for the requested period. Falls back to a regex grand-total extractor if Azure is unavailable.
+Returns per-invoice rows plus an aggregated `totalAmount` for the requested period. Falls back
+gracefully to a regex grand-total extractor if Azure is unavailable.
 
 ### Execution logging
 
-Every tool execution is recorded in `knoviq.tool_executions` with: tool name, arguments, output, status, error code/message, request ID, tenant ID, user ID, conversation ID, and latency.
+Every tool execution is recorded in `knoviq.tool_executions` with: tool name, arguments, output,
+status, error code/message, request ID, tenant ID, user ID, conversation ID, and latency.
+
+---
+
+## Web Frontend · port 3000
+
+Next.js 15 App Router application. API routes act as a Backend-for-Frontend (BFF), proxying
+requests to backend services while forwarding the user's JWT.
+
+### API routes
+
+| Method   | Path                        | Proxies to                        |
+| -------- | --------------------------- | --------------------------------- |
+| `POST`   | `/api/auth/register`        | Auth Service `/auth/register`     |
+| `POST`   | `/api/auth/login`           | Auth Service `/auth/login`        |
+| `POST`   | `/api/chat`                 | AI Gateway `/chat`                |
+| `POST`   | `/api/documents`            | Knowledge Service `/documents`    |
+| `GET`    | `/api/documents`            | Knowledge Service `/documents`    |
+| `DELETE` | `/api/documents/:id`        | Knowledge Service `/documents/:id`|
+| `GET`    | `/api/health`               | All four backend health endpoints |
+| `GET`    | `/api/observability`        | Tool Execution Service (7 SQL ops)|
+
+### Admin console
+
+`/admin/monitoring` — available to `owner` and `admin` roles only. Displays:
+
+- Service readiness (health checks)
+- Answer quality pulse — unsupported rate, high-priority review count, retrieval misses
+- **Answer review inbox** — non-grounded answers from the last 30 days with full evidence trail
+  (user question, draft answer, tool calls, retrieval results, validation findings). Admins can
+  mark each incident as Bad answer / Retrieval issue / Validator false alarm / Resolved.
+- 30-day quality trend chart
+- AI usage and cost by model and purpose
+- Background job health (tool execution summary)
+- Service response latency
+- Recent job activity
+
+### Chat thread isolation
+
+Chat threads are stored in `localStorage` under a per-user key
+(`knoviq.chatThreads.<userId>`). Users on the same device never see each other's threads.
+Thread state is reset on sign-in and sign-out.

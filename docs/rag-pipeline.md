@@ -1,12 +1,14 @@
 # RAG Pipeline
 
-Knoviq implements a production-grade Retrieval-Augmented Generation pipeline across the Knowledge Service and AI Gateway. The pipeline has three stages: ingestion, retrieval, and answer generation.
+Knoviq implements a production-grade Retrieval-Augmented Generation pipeline across the Knowledge
+Service and AI Gateway. The pipeline has three stages: ingestion, retrieval, and answer generation.
 
 ---
 
 ## Stage 1 — Document Ingestion
 
-When a user uploads a document, the Knowledge Service runs the following steps before marking the document `ready`.
+When a user uploads a document, the Knowledge Service runs the following steps before marking the
+document `ready`.
 
 ```
 Upload (PDF or TXT)
@@ -71,7 +73,8 @@ Upload (PDF or TXT)
 
 ## Stage 2 — Hybrid Retrieval
 
-When the agent calls `knowledge.retrieve`, the Knowledge Service runs two search arms in parallel and fuses their results.
+When the agent calls `knowledge.retrieve`, the Knowledge Service runs two search arms in parallel
+and fuses their results.
 
 ```
 Query text
@@ -107,26 +110,45 @@ Query text
                                               Falls back to RRF order on failure.
                                                         │
                                                         ▼
-                                              Top-K chunks returned (default K=5)
+                                              Top-K chunks returned (default K=8)
                                               Each result: chunkContent, chunkId,
                                               documentTitle, score, sourcePageStart
 ```
 
 ### Why hybrid search
 
-Pure vector search misses exact keyword matches — invoice numbers, part codes, names, dates. Pure BM25 misses semantic similarity — paraphrased questions, synonyms, multi-word concepts. Running both arms and fusing with RRF captures both. Research shows recall improving from ~65% to ~91% recall@10 over either arm alone.
+Pure vector search misses exact keyword matches — invoice numbers, part codes, names, dates. Pure
+BM25 misses semantic similarity — paraphrased questions, synonyms, multi-word concepts. Running
+both arms and fusing with RRF captures both. Research shows recall improving from ~65% to ~91%
+recall@10 over either arm alone (Cormack et al., SIGIR 2009).
 
 ### Why LLM reranking
 
-Bi-encoder embeddings encode query and document independently. An LLM jointly attends to both, detecting paraphrasing and subtle relevance that cosine similarity misses. Batching all candidates into one prompt keeps the cost at O(1) API calls per search.
+Bi-encoder embeddings encode query and document independently. An LLM jointly attends to both,
+detecting paraphrasing and subtle relevance that cosine similarity misses. Batching all candidates
+into one prompt keeps the cost at O(1) API calls per search.
+
+### Chunk limit tuning
+
+The default `KNOWLEDGE_SEARCH_LIMIT=8` is a balanced production default.
+
+| Value | Use case                                                  |
+| ----- | --------------------------------------------------------- |
+| 5     | Fast, lowest cost — good for simple factual Q&A           |
+| 8     | Balanced default — covers multi-part questions            |
+| 10    | Document summarisation or broad policy queries            |
+| 15+   | Invoice/financial workflows (already overridden in agent) |
+
+Beyond ~15 chunks, the LLM "lost in the middle" effect reduces answer quality — the model attends
+poorly to content in the middle of a long context window.
 
 ### Configuration
 
 | Variable                             | Default | Effect                                               |
 | ------------------------------------ | ------- | ---------------------------------------------------- |
 | `KNOWLEDGE_SEARCH_MIN_SIMILARITY`    | `0.2`   | Minimum cosine similarity for vector arm             |
-| `KNOWLEDGE_SEARCH_LIMIT`             | `5`     | Final chunks returned to the agent                   |
-| `KNOWLEDGE_RERANK_CANDIDATES`        | `20`    | Candidate pool fed into LLM reranker                 |
+| `KNOWLEDGE_SEARCH_LIMIT`             | `8`     | Final chunks returned to the agent                   |
+| `KNOWLEDGE_RERANK_CANDIDATES`        | `24`    | Candidate pool fed into LLM reranker (3–4× limit)    |
 | `KNOWLEDGE_RERANK_ENABLED`           | `true`  | Set `false` to skip reranking (faster, less precise) |
 | `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS` | `60`    | Redis cache TTL for search results                   |
 
@@ -143,7 +165,7 @@ Retrieved chunks (with citations)
   Synthesizer (gpt-4o, temp=0.1)
   Receives:
     - User message
-    - Retrieved chunks as numbered, labelled evidence
+    - Retrieved chunks as numbered, labelled evidence (no raw RRF scores)
     - Other tool outputs (calculator, invoice extraction)
   Produces:
     - Answer grounded in chunk content
@@ -157,26 +179,41 @@ Retrieved chunks (with citations)
     - requiresGroundedEvidence flag
   Checks:
     - Are all factual claims in the answer present in the retrieved chunks?
+    - Paraphrase counts as grounded — only clearly absent facts are flagged
   Returns: grounded / partially_grounded / unsupported
         │
         ▼
   Guardrail
   ├── grounded            → return answer as-is
   ├── partially_grounded  → return answer (chunks exist, trust the content)
-  ├── unsupported + chunks exist → soft caveat appended
+  ├── unsupported + chunks exist → soft caveat appended, answer kept
   └── unsupported + no chunks   → answer replaced with "not found" message
 ```
 
 ### KB-first rule
 
-The planner is instructed to always call `knowledge.retrieve` for any factual, informational, or who/what/when/how/why question. The knowledge base is the primary source of truth. A mandatory safety net in `AgentRunner` injects a retrieval call if the LLM planner returns zero tool calls for a non-greeting message.
+The planner is instructed to always call `knowledge.retrieve` for any factual, informational, or
+who/what/when/how/why question. The knowledge base is the primary source of truth.
 
-This prevents the LLM from answering document questions from training data instead of the uploaded knowledge base.
+A mandatory safety net in `AgentRunner` injects a retrieval call if the LLM planner returns zero
+tool calls for a non-greeting message. This is a deterministic code-level guard — it cannot be
+bypassed by prompt variations.
+
+### Validator design
+
+The validator prompt explicitly instructs the LLM not to mark answers `unsupported` when the
+retrieved chunks contain the topic — even if the topic appears as a proper noun or product name
+within a sentence rather than as a heading. Raw RRF scores (which are in the `0.001` range) are
+intentionally excluded from the validator input to prevent the LLM from treating them as evidence
+of low relevance.
 
 ---
 
 ## Search Cache
 
-Search results are cached in Redis by a hash of `(tenantId, userId, query, limit, minSimilarity, documentIds)`. When a user uploads a new document, the Knowledge Service invalidates all of that user's search keys for the tenant.
+Search results are cached in Redis by a hash of
+`(tenantId, userId, query, limit, minSimilarity, documentIds)`. When a user uploads a new document,
+the Knowledge Service invalidates all of that user's search keys for the tenant.
 
-Set `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS=0` to disable result caching while keeping Redis available for other services.
+Set `KNOWLEDGE_SEARCH_CACHE_TTL_SECONDS=0` to disable result caching while keeping Redis available
+for other services.
