@@ -148,7 +148,7 @@ importers:
         version: link:../../packages/auth
       '@knoviq/cache':
         specifier: workspace:*
-        version: file:packages/cache(@opentelemetry/api@1.9.1)
+        version: link:../../packages/cache
       '@knoviq/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -3448,13 +3448,6 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@js-sdsl/ordered-map@4.4.2': {}
-
-  '@knoviq/cache@file:packages/cache(@opentelemetry/api@1.9.1)':
-    dependencies:
-      redis: 5.12.1(@opentelemetry/api@1.9.1)
-    transitivePeerDependencies:
-      - '@node-rs/xxhash'
-      - '@opentelemetry/api'
 
   '@lukeed/ms@2.0.2': {}
 
