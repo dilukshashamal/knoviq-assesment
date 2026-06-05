@@ -21,13 +21,5 @@
   },
   "dependencies": {
     "redis": "^5.8.2"
-  },
-  "peerDependencies": {
-    "@opentelemetry/api": ">=1.0.0 <1.10.0"
-  },
-  "peerDependenciesMeta": {
-    "@opentelemetry/api": {
-      "optional": true
-    }
   }
 }

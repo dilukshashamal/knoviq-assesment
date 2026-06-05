@@ -4,34 +4,54 @@ import { backendUnavailable, backendUrls, bearerHeaders } from "../../_lib/backe
  * SSE streaming proxy.
  *
  * Pipes the AI Gateway /chat/stream SSE response directly to the browser.
- * We forward the ReadableStream without buffering so the client sees tokens
- * as they arrive rather than waiting for the full answer.
+ * force-dynamic prevents Next.js from caching or buffering this route.
  */
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request): Promise<Response> {
   try {
-    const response = await fetch(`${backendUrls.aiGateway}/chat/stream`, {
-      body: await request.text(),
+    const body = await request.text();
+
+    const upstream = await fetch(`${backendUrls.aiGateway}/chat/stream`, {
+      body,
       headers: {
         ...bearerHeaders(request),
         "content-type": request.headers.get("content-type") ?? "application/json",
       },
       method: "POST",
-      // Node 18+ fetch supports streaming response bodies
-      // @ts-expect-error -- duplex is required in Node when streaming the request body
-      duplex: "half",
     });
 
-    if (!response.ok || !response.body) {
-      // Surface upstream errors as plain JSON so the client can handle them
-      const text = await response.text();
+    if (!upstream.ok || !upstream.body) {
+      const text = await upstream.text();
       return new Response(text, {
         headers: { "content-type": "application/json" },
-        status: response.status,
+        status: upstream.status,
       });
     }
 
-    // Pipe the upstream SSE stream straight through to the browser
-    return new Response(response.body, {
+    // Transform the upstream SSE stream: pass each chunk straight through
+    // while keeping the connection alive so the browser receives events
+    // incrementally rather than waiting for the full body.
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    void upstream.body
+      .pipeTo(
+        new WritableStream({
+          write(chunk) {
+            return writer.write(chunk);
+          },
+          close() {
+            return writer.close();
+          },
+          abort(reason) {
+            return writer.abort(reason);
+          },
+        }),
+      )
+      .catch(() => writer.abort());
+
+    return new Response(readable, {
       headers: {
         "cache-control": "no-cache",
         "content-type": "text/event-stream; charset=utf-8",
