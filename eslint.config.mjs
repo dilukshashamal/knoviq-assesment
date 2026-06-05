@@ -3,7 +3,16 @@ import tseslint from "typescript-eslint";
 
 export default [
   {
-    ignores: ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/coverage/**"],
+    ignores: [
+      "**/dist/**",
+      "**/.next/**",
+      "**/node_modules/**",
+      "**/coverage/**",
+      "**/vitest.config.js",
+      "**/vitest.config.d.ts",
+      "**/*.js.map",
+      "**/*.d.ts.map",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -11,7 +20,10 @@ export default [
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          defaultProject: "tsconfig.json",
+          allowDefaultProject: ["vitest.config.ts"],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
