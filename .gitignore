@@ -8,6 +8,7 @@ dist/
 coverage/
 *.tsbuildinfo
 data/
+tmp/
 vitest.config.js
 vitest.config.d.ts
 vitest.config.js.map

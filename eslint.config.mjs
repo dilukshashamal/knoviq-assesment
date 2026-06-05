@@ -8,6 +8,7 @@ export default [
       "**/.next/**",
       "**/node_modules/**",
       "**/coverage/**",
+      "**/tmp/**",
       "**/vitest.config.js",
       "**/vitest.config.d.ts",
       "**/*.js.map",

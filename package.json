@@ -21,7 +21,9 @@
     "docker:build:ai": "docker build -f infra/docker/backend.Dockerfile --build-arg=SERVICE_PACKAGE=@knoviq/ai-gateway -t knoviq/ai-gateway:0.1.0 .",
     "docker:build:knowledge": "docker build -f infra/docker/backend.Dockerfile --build-arg=SERVICE_PACKAGE=@knoviq/knowledge-service -t knoviq/knowledge-service:0.1.0 .",
     "docker:build:tools": "docker build -f infra/docker/backend.Dockerfile --build-arg=SERVICE_PACKAGE=@knoviq/tool-execution-service -t knoviq/tool-execution-service:0.1.0 .",
+    "docker:build:web": "docker build -f infra/docker/web.Dockerfile -t knoviq/web:0.1.0 .",
     "docker:build:backend": "pnpm run docker:build:auth && pnpm run docker:build:ai && pnpm run docker:build:knowledge && pnpm run docker:build:tools",
+    "docker:build:app": "pnpm run docker:build:backend && pnpm run docker:build:web",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },

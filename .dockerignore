@@ -4,6 +4,7 @@ dist
 .next
 coverage
 data
+tmp
 .git
 .env
 .env.*
