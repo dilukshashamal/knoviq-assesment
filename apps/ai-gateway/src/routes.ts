@@ -2,12 +2,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import { z } from "zod";
 
-import { unauthorized } from "./errors.js";
-import { ChatRequestSchema } from "./schemas.js";
 import type { AgentRunner } from "./agent-runner.js";
-import type { AgentRunEvent } from "./types.js";
 import type { AiGatewaySettings } from "./config.js";
+import { unauthorized } from "./errors.js";
 import { parseBearerToken, verifyAccessToken } from "./jwt.js";
+import type { AuthenticatedFixedWindowRateLimiter } from "./rate-limiter.js";
+import { ChatRequestSchema } from "./schemas.js";
+import type { AgentRunEvent } from "./types.js";
 
 const WebSocketAuthQuerySchema = z.object({
   accessToken: z.string().min(1).optional(),
@@ -18,18 +19,14 @@ export function registerChatRoutes(
   app: FastifyInstance,
   agentRunner: AgentRunner,
   settings: AiGatewaySettings,
+  llmRateLimiter: AuthenticatedFixedWindowRateLimiter,
 ) {
-  // Chat endpoints are LLM-backed and expensive — 30 requests per minute per IP
-  const chatRateLimit = {
-    config: {
-      rateLimit: {
-        max: 30,
-        timeWindow: "1 minute",
-      },
-    },
+  const authenticateAndRateLimit = async (request: FastifyRequest, reply: FastifyReply) => {
+    await app.authenticate(request, reply);
+    await enforceLlmRateLimit(request, reply, llmRateLimiter);
   };
 
-  app.post("/chat", { preHandler: app.authenticate, ...chatRateLimit }, async (request) => {
+  app.post("/chat", { preHandler: authenticateAndRateLimit }, async (request) => {
     const principal = requirePrincipal(request);
     const body = ChatRequestSchema.parse(request.body);
 
@@ -52,50 +49,46 @@ export function registerChatRoutes(
     );
   });
 
-  app.post(
-    "/chat/stream",
-    { preHandler: app.authenticate, ...chatRateLimit },
-    async (request, reply) => {
-      const principal = requirePrincipal(request);
-      const body = ChatRequestSchema.parse(request.body);
+  app.post("/chat/stream", { preHandler: authenticateAndRateLimit }, async (request, reply) => {
+    const principal = requirePrincipal(request);
+    const body = ChatRequestSchema.parse(request.body);
 
-      if (!request.accessToken) {
-        throw unauthorized();
-      }
+    if (!request.accessToken) {
+      throw unauthorized();
+    }
 
-      reply.hijack();
-      prepareSse(reply);
+    reply.hijack();
+    prepareSse(reply);
 
-      try {
-        const runInput = {
-          accessToken: request.accessToken,
-          emit: async (event: AgentRunEvent) => {
-            writeSse(reply, event);
-          },
-          message: body.message,
-          requestId: request.id,
-          tenantId: principal.tenantId,
-          userId: principal.userId,
-        };
+    try {
+      const runInput = {
+        accessToken: request.accessToken,
+        emit: async (event: AgentRunEvent) => {
+          writeSse(reply, event);
+        },
+        message: body.message,
+        requestId: request.id,
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+      };
 
-        await agentRunner.run(
-          body.conversationId === undefined
-            ? runInput
-            : { ...runInput, conversationId: body.conversationId },
-        );
-        writeSse(reply, { data: "[DONE]", type: "final" });
-      } catch (error) {
-        writeSse(reply, {
-          data: {
-            message: error instanceof Error ? error.message : "Streaming chat failed",
-          },
-          type: "error",
-        });
-      } finally {
-        reply.raw.end();
-      }
-    },
-  );
+      await agentRunner.run(
+        body.conversationId === undefined
+          ? runInput
+          : { ...runInput, conversationId: body.conversationId },
+      );
+      writeSse(reply, { data: "[DONE]", type: "final" });
+    } catch (error) {
+      writeSse(reply, {
+        data: {
+          message: error instanceof Error ? error.message : "Streaming chat failed",
+        },
+        type: "error",
+      });
+    } finally {
+      reply.raw.end();
+    }
+  });
 
   app.route({
     handler: async (_request, reply) =>
@@ -128,6 +121,7 @@ export function registerChatRoutes(
         void handleWebSocketChatMessage({
           agentRunner,
           connection,
+          llmRateLimiter,
           rawMessage,
           request,
         }).finally(() => {
@@ -184,6 +178,7 @@ function parseStreamingAccessToken(request: FastifyRequest): string {
 async function handleWebSocketChatMessage(input: {
   agentRunner: AgentRunner;
   connection: WebSocket;
+  llmRateLimiter: AuthenticatedFixedWindowRateLimiter;
   rawMessage: WebSocket.RawData;
   request: FastifyRequest;
 }): Promise<void> {
@@ -192,6 +187,21 @@ async function handleWebSocketChatMessage(input: {
 
     if (!input.request.accessToken) {
       throw unauthorized();
+    }
+
+    const decision = await consumeLlmRateLimit(input.request, input.llmRateLimiter);
+
+    if (!decision.allowed) {
+      writeWebSocketEvent(input.connection, {
+        data: {
+          code: "rate_limit_exceeded",
+          limit: decision.limit,
+          message: `Too many LLM requests. Retry after ${String(decision.resetAfterSeconds)} seconds.`,
+          resetAfterSeconds: decision.resetAfterSeconds,
+        },
+        type: "error",
+      });
+      return;
     }
 
     const body = ChatRequestSchema.parse(JSON.parse(input.rawMessage.toString()));
@@ -228,4 +238,45 @@ function writeWebSocketEvent(connection: WebSocket, event: AgentRunEvent): void 
   }
 
   connection.send(JSON.stringify(event));
+}
+
+async function enforceLlmRateLimit(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  limiter: AuthenticatedFixedWindowRateLimiter,
+): Promise<void> {
+  const decision = await consumeLlmRateLimit(request, limiter);
+
+  if (decision.allowed) {
+    reply.header("x-ratelimit-limit", String(decision.limit));
+    reply.header("x-ratelimit-remaining", String(decision.remaining));
+    reply.header("x-ratelimit-reset", String(decision.resetAfterSeconds));
+    return;
+  }
+
+  reply.header("retry-after", String(decision.resetAfterSeconds));
+  reply.header("x-ratelimit-limit", String(decision.limit));
+  reply.header("x-ratelimit-remaining", "0");
+  reply.header("x-ratelimit-reset", String(decision.resetAfterSeconds));
+  reply.status(429).send({
+    code: "rate_limit_exceeded",
+    limit: decision.limit,
+    message: `Too many LLM requests. Retry after ${String(decision.resetAfterSeconds)} seconds.`,
+    remaining: 0,
+    requestId: request.id,
+    resetAfterSeconds: decision.resetAfterSeconds,
+  });
+}
+
+async function consumeLlmRateLimit(
+  request: FastifyRequest,
+  limiter: AuthenticatedFixedWindowRateLimiter,
+) {
+  const principal = requirePrincipal(request);
+
+  return limiter.consume({
+    routeGroup: "chat",
+    tenantId: principal.tenantId,
+    userId: principal.userId,
+  });
 }

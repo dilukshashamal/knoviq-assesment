@@ -3,9 +3,15 @@ import { createDomainEvent, type EventPublisher } from "@knoviq/events";
 import { estimateLlmCostUsd, runWithSpan } from "@knoviq/observability";
 
 import type { AiGatewaySettings } from "./config.js";
+import {
+  extractRequestedPeriod as extractRequestedPeriodFromMessage,
+  isInvoiceWorkflowMessage as isInvoiceWorkflowMessageFromMessage,
+  isPureConversationalGreeting,
+} from "./agent-heuristics.js";
 import type { AgentModel, ModelUsage } from "./model.js";
 import type { AiGatewayRepository } from "./repository.js";
 import type { ToolExecutionClient } from "./tool-client.js";
+import { normalizePlannedToolCalls } from "./tool-policy.js";
 import type {
   AgentEventHandler,
   AgentRunResult,
@@ -113,12 +119,11 @@ export class AgentRunner {
     // available AND the message is not a pure greeting, inject a retrieval call.
     // This ensures the KB is always searched for informational questions,
     // regardless of what the planner decided.
+    plan.toolCalls = normalizePlannedToolCalls(plan.toolCalls, input.message);
+
     const knowledgeTool = tools.find((t) => t.name === "knowledge.retrieve");
     const planHasRetrieval = plan.toolCalls.some((tc) => tc.toolName === "knowledge.retrieve");
-    const isPureGreeting =
-      /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|ok|okay|sure|yes|no|bye|goodbye|see you|got it|understood|noted|great|cool|awesome)\s*[!.?]?\s*$/i.test(
-        input.message.trim(),
-      );
+    const isPureGreeting = isPureConversationalGreeting(input.message);
 
     if (knowledgeTool && !planHasRetrieval && !isPureGreeting) {
       plan.toolCalls.unshift({
@@ -156,7 +161,10 @@ export class AgentRunner {
     }
 
     for (let followUpStep = 0; followUpStep < 4; followUpStep += 1) {
-      const chainedCalls = buildFollowUpToolCalls(input.message, toolCalls);
+      const chainedCalls = normalizePlannedToolCalls(
+        buildFollowUpToolCalls(input.message, toolCalls),
+        input.message,
+      );
 
       if (chainedCalls.length === 0) {
         break;
@@ -581,7 +589,7 @@ function buildFollowUpToolCalls(
   toolCalls: ExecutedToolCall[],
 ): PlannedToolCall[] {
   const lower = userMessage.toLowerCase();
-  const invoiceWorkflow = isInvoiceWorkflowMessage(lower);
+  const invoiceWorkflow = isInvoiceWorkflowMessageFromMessage(lower);
   const hasInvoiceExtraction = toolCalls.some(
     (toolCall) => toolCall.toolName === "document.extract_invoice_fields",
   );
@@ -591,13 +599,17 @@ function buildFollowUpToolCalls(
     const chunks = extractKnowledgeChunks(toolCalls);
 
     if (chunks.length > 0) {
+      const period = extractRequestedPeriodFromMessage(userMessage);
       return [
         {
-          arguments: {
-            chunks,
-            currency: "USD",
-            period: extractRequestedPeriod(userMessage),
-          },
+          arguments:
+            period === null
+              ? { chunks, currency: "USD" }
+              : {
+                  chunks,
+                  currency: "USD",
+                  period,
+                },
           reason:
             "Chained after retrieval to extract structured invoice fields before aggregation.",
           toolName: "document.extract_invoice_fields" satisfies ToolName,
@@ -629,7 +641,7 @@ function buildFollowUpToolCalls(
   return [];
 }
 
-function isInvoiceWorkflowMessage(message: string): boolean {
+function _isInvoiceWorkflowMessage(message: string): boolean {
   // Detect invoice workflow by the presence of invoice-related terms combined with
   // any aggregation/period intent signal. Month names are NOT hardcoded — the period
   // regex covers ISO dates (2026-04), any month name, and generic time words.
@@ -643,7 +655,7 @@ function isInvoiceWorkflowMessage(message: string): boolean {
   return hasInvoiceTerm && (hasAggregationIntent || hasPeriodSignal);
 }
 
-function extractRequestedPeriod(message: string): string | null {
+function _extractRequestedPeriod(message: string): string | null {
   const isoMonth = message.match(/\b20\d{2}-(?:0?[1-9]|1[0-2])\b/)?.[0];
 
   if (isoMonth) {

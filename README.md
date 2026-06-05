@@ -254,6 +254,8 @@ Tuning guide for `KNOWLEDGE_SEARCH_LIMIT`: 5 for fast/cheap Q&A; 8 for balanced 
 | ------------------------------- | ------- | -------------------------------------------------- |
 | `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | `1200`  | Hard token cap on synthesis responses              |
 | `LLM_MEMORY_MAX_MESSAGES`       | `12`    | Conversation history window (older turns drop off) |
+| `LLM_RATE_LIMIT_MAX_REQUESTS`   | `30`    | Per-user LLM-backed chat requests per window       |
+| `LLM_RATE_LIMIT_WINDOW_SECONDS` | `60`    | Per-user LLM rate-limit window length              |
 
 ### Observability
 
@@ -547,6 +549,7 @@ Domain events (`knowledge.document.uploaded`, `conversation.created`, `agent.run
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Token budget       | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` hard cap on synthesis output                                                                           |
 | Memory window      | `LLM_MEMORY_MAX_MESSAGES=12` — oldest turns drop first                                                                                      |
+| Per-user throttling | `LLM_RATE_LIMIT_MAX_REQUESTS=30` per `LLM_RATE_LIMIT_WINDOW_SECONDS=60`, keyed by tenant and user after JWT auth                            |
 | Rerank pool        | `KNOWLEDGE_RERANK_CANDIDATES=24` — controls how many chunks the LLM reranker scores per search                                              |
 | Model routing      | Planner, validator, reranker, invoice extraction → `gpt-4o-mini`; synthesis only → `gpt-4o`                                                 |
 | Per-model pricing  | `@knoviq/observability` has a built-in pricing table keyed by deployment name substring. `gpt-4o` synthesis is never charged at mini rates.  |

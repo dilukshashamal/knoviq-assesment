@@ -14,6 +14,8 @@ const AiGatewaySettingsSchema = z.object({
   LLM_DEFAULT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1200),
   LLM_MEMORY_MAX_MESSAGES: z.coerce.number().int().positive().max(50).default(12),
   LLM_PROMPT_COST_PER_1K_TOKENS: z.coerce.number().min(0).default(0),
+  LLM_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
+  LLM_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   TOOL_DEFINITIONS_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(300),
   TOOL_EXECUTION_SERVICE_URL: z.string().url().default("http://127.0.0.1:4004"),
 });
@@ -29,6 +31,8 @@ export interface AiGatewaySettings {
   jwtIssuer: string;
   llmCompletionCostPer1kTokens: number;
   llmPromptCostPer1kTokens: number;
+  llmRateLimitMaxRequests: number;
+  llmRateLimitWindowSeconds: number;
   maxOutputTokens: number;
   memoryMaxMessages: number;
   modelProvider: "azure" | "local";
@@ -63,6 +67,8 @@ export function loadAiGatewaySettings(): AiGatewaySettings {
     jwtIssuer: parsed.JWT_ISSUER,
     llmCompletionCostPer1kTokens: parsed.LLM_COMPLETION_COST_PER_1K_TOKENS,
     llmPromptCostPer1kTokens: parsed.LLM_PROMPT_COST_PER_1K_TOKENS,
+    llmRateLimitMaxRequests: parsed.LLM_RATE_LIMIT_MAX_REQUESTS,
+    llmRateLimitWindowSeconds: parsed.LLM_RATE_LIMIT_WINDOW_SECONDS,
     maxOutputTokens: parsed.LLM_DEFAULT_MAX_OUTPUT_TOKENS,
     memoryMaxMessages: parsed.LLM_MEMORY_MAX_MESSAGES,
     modelProvider: parsed.AI_GATEWAY_MODEL_PROVIDER,

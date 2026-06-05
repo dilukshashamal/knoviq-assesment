@@ -1,15 +1,10 @@
-/**
- * Test-only re-exports of pure functions from agent-runner.
- * This file is NOT imported by production code — it exists solely so that
- * vitest can test internal logic without making those functions part of the
- * public module surface.
- */
+export function isPureConversationalGreeting(message: string): boolean {
+  return /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|ok|okay|sure|yes|no|bye|goodbye|see you|got it|understood|noted|great|cool|awesome)\s*[!.?]?\s*$/i.test(
+    message.trim(),
+  );
+}
 
-// ── Inline copies of the pure functions under test ───────────────────────────
-// We duplicate them here rather than exporting from agent-runner.ts to avoid
-// accidentally making internal logic part of the public API.
-
-export function testIsInvoiceWorkflow(message: string): boolean {
+export function isInvoiceWorkflowMessage(message: string): boolean {
   const lower = message.toLowerCase();
   const hasInvoiceTerm = /\binvoices?\b/.test(lower);
   const hasAggregationIntent =
@@ -18,12 +13,16 @@ export function testIsInvoiceWorkflow(message: string): boolean {
     /\b(20\d{2}[-/]\d{1,2}|january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|quarter|ytd|this year|last year|last month|this month)\b/.test(
       lower,
     );
+
   return hasInvoiceTerm && (hasAggregationIntent || hasPeriodSignal);
 }
 
-export function testExtractRequestedPeriod(message: string): string | null {
+export function extractRequestedPeriod(message: string): string | null {
   const isoMonth = message.match(/\b20\d{2}-(?:0?[1-9]|1[0-2])\b/)?.[0];
-  if (isoMonth) return isoMonth;
+
+  if (isoMonth) {
+    return isoMonth;
+  }
 
   const monthMatch = message.match(
     /\b(January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+20\d{2})?\b/i,

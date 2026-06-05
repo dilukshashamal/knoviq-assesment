@@ -11,8 +11,14 @@ export interface CacheSettings {
 export interface CacheClient {
   deleteByPattern(pattern: string): Promise<number>;
   getJson<T>(key: string): Promise<T | undefined>;
+  hitFixedWindow(key: string, windowSeconds: number): Promise<FixedWindowHit | undefined>;
   setJson(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
   shutdown(): Promise<void>;
+}
+
+export interface FixedWindowHit {
+  count: number;
+  ttlSeconds: number;
 }
 
 export function loadCacheSettings(
@@ -55,6 +61,10 @@ class DisabledCacheClient implements CacheClient {
   }
 
   async getJson<T>(): Promise<T | undefined> {
+    return undefined;
+  }
+
+  async hitFixedWindow(): Promise<FixedWindowHit | undefined> {
     return undefined;
   }
 
@@ -124,6 +134,31 @@ class RedisCacheClient implements CacheClient {
       }
 
       return JSON.parse(value) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async hitFixedWindow(
+    key: string,
+    windowSeconds: number,
+  ): Promise<FixedWindowHit | undefined> {
+    if (windowSeconds <= 0) {
+      return undefined;
+    }
+
+    try {
+      const client = await this.connect();
+      const prefixedKey = withCachePrefix(this.settings, key);
+      const count = Number(await client.incr(prefixedKey));
+      let ttlSeconds = Number(await client.ttl(prefixedKey));
+
+      if (ttlSeconds <= 0) {
+        await client.expire(prefixedKey, windowSeconds);
+        ttlSeconds = windowSeconds;
+      }
+
+      return { count, ttlSeconds };
     } catch {
       return undefined;
     }

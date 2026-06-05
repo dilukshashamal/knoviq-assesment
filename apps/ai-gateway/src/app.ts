@@ -13,6 +13,7 @@ import type { AiGatewaySettings } from "./config.js";
 import { createAgentModel } from "./model.js";
 import { handleApiError } from "./errors.js";
 import { parseBearerToken, verifyAccessToken } from "./jwt.js";
+import { AuthenticatedFixedWindowRateLimiter } from "./rate-limiter.js";
 import { AiGatewayRepository } from "./repository.js";
 import { registerChatRoutes } from "./routes.js";
 import { ToolExecutionClient } from "./tool-client.js";
@@ -37,6 +38,10 @@ export async function buildAiGatewayApp(input: BuildAiGatewayAppInput) {
   const repository = new AiGatewayRepository(input.pool);
   const model = createAgentModel(input.settings);
   const toolClient = new ToolExecutionClient(input.settings, input.cache);
+  const llmRateLimiter = new AuthenticatedFixedWindowRateLimiter(input.cache, {
+    maxRequests: input.settings.llmRateLimitMaxRequests,
+    windowSeconds: input.settings.llmRateLimitWindowSeconds,
+  });
   const agentRunner = new AgentRunner(
     repository,
     model,
@@ -86,7 +91,7 @@ export async function buildAiGatewayApp(input: BuildAiGatewayAppInput) {
     }),
   );
 
-  registerChatRoutes(app, agentRunner, input.settings);
+  registerChatRoutes(app, agentRunner, input.settings, llmRateLimiter);
 
   return app;
 }
