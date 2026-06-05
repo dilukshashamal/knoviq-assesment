@@ -56,13 +56,13 @@ Tool Execution Service
 
 Docker Compose uses the `app` profile for application containers:
 
-| Container                      | Image                                 | Dockerfile                         |
-| ------------------------------ | ------------------------------------- | ---------------------------------- |
-| `knoviq-web`                   | `knoviq/web:0.1.0`                    | `infra/docker/web.Dockerfile`      |
-| `knoviq-auth`                  | `knoviq/auth-service:0.1.0`           | `infra/docker/backend.Dockerfile`  |
-| `knoviq-ai-gateway`            | `knoviq/ai-gateway:0.1.0`             | `infra/docker/backend.Dockerfile`  |
-| `knoviq-knowledge`             | `knoviq/knowledge-service:0.1.0`      | `infra/docker/backend.Dockerfile`  |
-| `knoviq-tools`                 | `knoviq/tool-execution-service:0.1.0` | `infra/docker/backend.Dockerfile`  |
+| Container           | Image                                 | Dockerfile                        |
+| ------------------- | ------------------------------------- | --------------------------------- |
+| `knoviq-web`        | `knoviq/web:0.1.0`                    | `infra/docker/web.Dockerfile`     |
+| `knoviq-auth`       | `knoviq/auth-service:0.1.0`           | `infra/docker/backend.Dockerfile` |
+| `knoviq-ai-gateway` | `knoviq/ai-gateway:0.1.0`             | `infra/docker/backend.Dockerfile` |
+| `knoviq-knowledge`  | `knoviq/knowledge-service:0.1.0`      | `infra/docker/backend.Dockerfile` |
+| `knoviq-tools`      | `knoviq/tool-execution-service:0.1.0` | `infra/docker/backend.Dockerfile` |
 
 The web container talks to backend containers by Compose service name, not `localhost`.
 

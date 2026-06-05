@@ -23,8 +23,7 @@ pnpm --filter @knoviq/web dev
 ```
 
 Backend `dev` scripts use `tsx watch` and reload on file save. Backend `start` runs compiled
-`dist/` and requires `pnpm build` after source changes. The web app uses Next.js dev mode on port
-3000.
+`dist/` and requires `pnpm build` after source changes. The web app uses Next.js dev mode on port 3000.
 
 ---
 
@@ -151,11 +150,11 @@ Auth Service and Web are stateless and scale horizontally with no additional con
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`.
 
-| Job         | Steps                                             |
-| ----------- | ------------------------------------------------- |
+| Job         | Steps                                                 |
+| ----------- | ----------------------------------------------------- |
 | `quality`   | Install -> format check -> build -> lint -> typecheck |
-| `docker`    | Buildx `--check` for backend and web Dockerfiles  |
-| `manifests` | `kubectl kustomize infra/k8s/base` render check   |
+| `docker`    | Buildx `--check` for backend and web Dockerfiles      |
+| `manifests` | `kubectl kustomize infra/k8s/base` render check       |
 
 ### Container Publishing
 

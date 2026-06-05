@@ -13,10 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  extractRequestedPeriod,
-  isInvoiceWorkflowMessage,
-} from "./agent-heuristics.js";
+import { extractRequestedPeriod, isInvoiceWorkflowMessage } from "./agent-heuristics.js";
 
 describe("isInvoiceWorkflowMessage", () => {
   it("detects invoice + total", () => {

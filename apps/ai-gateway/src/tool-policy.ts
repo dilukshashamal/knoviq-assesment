@@ -86,10 +86,7 @@ export function normalizePlannedToolCall(
 }
 
 export function sanitizeToolText(input: string, maxLength: number): string {
-  return stripControlCharacters(input)
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  return stripControlCharacters(input).replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function stripControlCharacters(input: string): string {
@@ -179,9 +176,7 @@ function normalizeInvoiceExtractionCall(toolCall: PlannedToolCall): PlannedToolC
         return normalizedChunk;
       }),
       currency: sanitizeToolText(parsed.data.currency, 12),
-      ...(parsed.data.period
-        ? { period: sanitizeToolText(parsed.data.period, 80) }
-        : {}),
+      ...(parsed.data.period ? { period: sanitizeToolText(parsed.data.period, 80) } : {}),
     },
   };
 }

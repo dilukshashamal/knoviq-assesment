@@ -139,10 +139,7 @@ class RedisCacheClient implements CacheClient {
     }
   }
 
-  async hitFixedWindow(
-    key: string,
-    windowSeconds: number,
-  ): Promise<FixedWindowHit | undefined> {
+  async hitFixedWindow(key: string, windowSeconds: number): Promise<FixedWindowHit | undefined> {
     if (windowSeconds <= 0) {
       return undefined;
     }
