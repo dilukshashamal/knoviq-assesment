@@ -12,6 +12,7 @@ interface ToolExecutionResponse {
 }
 
 const operations = [
+  "answer_validation_summary",
   "llm_usage_summary",
   "tool_execution_summary",
   "service_metric_summary",
@@ -29,6 +30,12 @@ export async function GET(request: Request): Promise<Response> {
       },
       { status: 401 },
     );
+  }
+
+  const adminGate = await requireAdminAccess(request);
+
+  if (adminGate) {
+    return adminGate;
   }
 
   try {
@@ -56,5 +63,40 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(Object.fromEntries(results));
   } catch (error) {
     return backendUnavailable("Tool Execution Service", error);
+  }
+}
+
+async function requireAdminAccess(request: Request): Promise<Response | null> {
+  try {
+    const response = await fetch(`${backendUrls.auth}/auth/me`, {
+      cache: "no-store",
+      headers: bearerHeaders(request),
+    });
+
+    if (!response.ok) {
+      return Response.json(
+        {
+          code: "unauthorized",
+          message: "Sign in again to view admin monitoring.",
+        },
+        { status: response.status },
+      );
+    }
+
+    const user = (await response.json()) as { role?: string };
+
+    if (user.role !== "admin" && user.role !== "owner") {
+      return Response.json(
+        {
+          code: "forbidden",
+          message: "Admin monitoring requires an admin or owner role.",
+        },
+        { status: 403 },
+      );
+    }
+
+    return null;
+  } catch (error) {
+    return backendUnavailable("Auth Service", error);
   }
 }

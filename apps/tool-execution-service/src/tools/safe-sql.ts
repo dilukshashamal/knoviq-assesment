@@ -17,6 +17,7 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
         operation: {
           type: "string",
           enum: [
+            "answer_validation_summary",
             "document_count",
             "list_documents",
             "llm_usage_summary",
@@ -59,6 +60,8 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
     const limit = Math.min(parsed.limit ?? 20, this.settings.sqlMaxLimit);
 
     switch (parsed.operation) {
+      case "answer_validation_summary":
+        return this.answerValidationSummary(parsed, context);
       case "document_count":
         return this.documentCount(parsed, context);
       case "list_documents":
@@ -74,6 +77,33 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
       default:
         throw badRequest("Unsupported SQL operation");
     }
+  }
+
+  private async answerValidationSummary(args: SafeSqlArguments, context: ToolExecutionContext) {
+    const result = await this.pool.query(
+      `
+        SELECT
+          metadata->'validation'->>'status' AS validation_status,
+          count(*)::int AS count,
+          round(avg((metadata->'validation'->>'confidence')::numeric), 2)::text
+            AS average_confidence
+        FROM knoviq.messages
+        WHERE tenant_id = $1
+          AND role = 'assistant'
+          AND metadata ? 'validation'
+          AND metadata->'validation'->>'status' IS NOT NULL
+          AND ($2::timestamptz IS NULL OR created_at >= $2)
+          AND ($3::timestamptz IS NULL OR created_at < $3)
+        GROUP BY validation_status
+        ORDER BY count DESC
+      `,
+      [context.tenantId, args.from ?? null, args.to ?? null],
+    );
+
+    return {
+      operation: args.operation,
+      rows: result.rows,
+    };
   }
 
   private async documentCount(args: SafeSqlArguments, context: ToolExecutionContext) {

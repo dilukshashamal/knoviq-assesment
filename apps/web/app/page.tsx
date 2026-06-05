@@ -2,14 +2,10 @@
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
-  BarChart3,
+  BookOpen,
   CheckCircle2,
   CircleAlert,
-  Clock3,
   FileText,
-  FolderOpen,
-  Gauge,
   Loader2,
   LogIn,
   MessageSquarePlus,
@@ -21,26 +17,15 @@ import {
   Trash2,
   Upload,
   UserPlus,
-  Workflow,
 } from "lucide-react";
 
-interface AuthUser {
-  email: string;
-  fullName: string | null;
-  role: string;
-  tenantId: string;
-  tenantName: string;
-  tenantSlug: string;
-  userId: string;
-}
-
-interface AuthResponse {
-  tokens: {
-    accessToken: string;
-    refreshToken: string;
-  };
-  user: AuthUser;
-}
+import {
+  type AuthResponse,
+  isAdminRole,
+  readStoredSession,
+  SESSION_STORAGE_KEY,
+  threadStorageKey,
+} from "@/lib/session";
 
 interface DocumentSummary {
   chunkCount: number;
@@ -50,14 +35,6 @@ interface DocumentSummary {
   status: string;
   title: string;
   visibility: string;
-}
-
-interface HealthCheck {
-  key: string;
-  label: string;
-  latencyMs: number;
-  ok: boolean;
-  status: number;
 }
 
 interface ToolCall {
@@ -104,24 +81,11 @@ interface ChatThread {
   updatedAt: string;
 }
 
-interface ToolExecutionResponse {
-  error?: {
-    code: string;
-    message: string;
-  };
-  latencyMs: number;
-  output?: {
-    rows?: Record<string, unknown>[];
-  };
-  status: "succeeded" | "failed";
-  toolName: string;
-}
-
-interface ObservabilityResponse {
-  llm_usage_summary?: ToolExecutionResponse;
-  recent_tool_executions?: ToolExecutionResponse;
-  service_metric_summary?: ToolExecutionResponse;
-  tool_execution_summary?: ToolExecutionResponse;
+interface SourceReference {
+  chunkId: string;
+  documentTitle: string;
+  excerpt?: string;
+  pageLabel: string;
 }
 
 interface ApiErrorBody {
@@ -134,13 +98,6 @@ interface ApiErrorBody {
   message?: string;
 }
 
-const SESSION_STORAGE_KEY = "knoviq.session";
-
-/** Returns a localStorage key scoped to the specific user so chat threads
- *  from one account are never visible to another account on the same device. */
-function threadStorageKey(userId: string): string {
-  return `knoviq.chatThreads.${userId}`;
-}
 const defaultQuestion = "";
 
 export default function HomePage() {
@@ -167,12 +124,6 @@ export default function HomePage() {
   const [chatInput, setChatInput] = useState(defaultQuestion);
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
-  const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
-  const [healthLoading, setHealthLoading] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"monitor" | "sources" | "trace">("sources");
-  const [observability, setObservability] = useState<ObservabilityResponse | null>(null);
-  const [observabilityLoading, setObservabilityLoading] = useState(false);
-  const [observabilityStatus, setObservabilityStatus] = useState<string | null>(null);
   const [storageReady, setStorageReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,37 +134,14 @@ export default function HomePage() {
       threadState.threads[0],
     [threadState.activeThreadId, threadState.threads],
   );
-  const latestAssistant = useMemo(() => findLatestAssistant(activeThread), [activeThread]);
-  const latestToolCalls = latestAssistant?.toolCalls ?? [];
-  const monitor = useMemo(() => buildMonitorSummary(observability), [observability]);
 
   useEffect(() => {
-    const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const storedSession = readStoredSession();
 
     if (storedSession) {
-      try {
-        const parsed = JSON.parse(storedSession) as AuthResponse;
-        setSession(parsed);
-        setEmail(parsed.user.email);
-
-        // Load this user's threads from their scoped key
-        const storedThreads = window.localStorage.getItem(threadStorageKey(parsed.user.userId));
-        if (storedThreads) {
-          try {
-            const parsedThreads = JSON.parse(storedThreads) as {
-              activeThreadId: string;
-              threads: ChatThread[];
-            };
-            if (parsedThreads.threads.length > 0) {
-              setThreadState(parsedThreads);
-            }
-          } catch {
-            window.localStorage.removeItem(threadStorageKey(parsed.user.userId));
-          }
-        }
-      } catch {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
-      }
+      setSession(storedSession);
+      setEmail(storedSession.user.email);
+      restoreThreads(storedSession.user.userId);
     }
 
     setStorageReady(true);
@@ -229,18 +157,8 @@ export default function HomePage() {
   }, [storageReady, session, threadState]);
 
   useEffect(() => {
-    void refreshHealth();
-    const interval = window.setInterval(() => {
-      void refreshHealth();
-    }, 15000);
-
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     if (accessToken) {
       void refreshDocuments(accessToken);
-      void refreshObservability(accessToken);
     }
   }, [accessToken]);
 
@@ -271,25 +189,7 @@ export default function HomePage() {
 
       setSession(response);
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(response));
-
-      // Reset threads to a blank slate, then load this user's saved threads
-      const freshThread = createThread();
-      const defaultState = { activeThreadId: freshThread.id, threads: [freshThread] };
-      const savedThreads = window.localStorage.getItem(threadStorageKey(response.user.userId));
-      if (savedThreads) {
-        try {
-          const parsed = JSON.parse(savedThreads) as {
-            activeThreadId: string;
-            threads: ChatThread[];
-          };
-          setThreadState(parsed.threads.length > 0 ? parsed : defaultState);
-        } catch {
-          setThreadState(defaultState);
-        }
-      } else {
-        setThreadState(defaultState);
-      }
-
+      restoreThreads(response.user.userId);
       setAuthStatus(`Signed in to ${response.user.tenantName}`);
     } catch (error) {
       setAuthStatus(getErrorMessage(error));
@@ -332,6 +232,7 @@ export default function HomePage() {
         method: "POST",
       });
       setUploadStatus(`Uploaded ${selectedFile.name}`);
+      setDocumentTitle("");
       setSelectedFile(null);
       await refreshDocuments(accessToken);
     } catch (error) {
@@ -403,9 +304,7 @@ export default function HomePage() {
         messages: [...current.messages, assistantMessage],
         updatedAt: assistantMessage.createdAt,
       }));
-      setInspectorTab(response.toolCalls.length > 0 ? "trace" : "sources");
-      setChatStatus("Answer generated.");
-      void refreshObservability(accessToken);
+      setChatStatus("Answer ready.");
     } catch (error) {
       setChatStatus(getErrorMessage(error));
     } finally {
@@ -419,7 +318,7 @@ export default function HomePage() {
       return;
     }
 
-    const confirmed = window.confirm(`Delete "${document.title}" from this tenant?`);
+    const confirmed = window.confirm(`Delete "${document.title}"?`);
 
     if (!confirmed) {
       return;
@@ -448,7 +347,7 @@ export default function HomePage() {
     const file = event.target.files?.[0] ?? null;
     setSelectedFile(file);
 
-    if (file && (!documentTitle || documentTitle === "Knowledge Assistant Policy")) {
+    if (file && !documentTitle) {
       setDocumentTitle(file.name.replace(/\.[^.]+$/, ""));
     }
   }
@@ -465,15 +364,13 @@ export default function HomePage() {
 
   function handleDeleteThread(threadId: string) {
     setThreadState((current) => {
-      const remaining = current.threads.filter((t) => t.id !== threadId);
+      const remaining = current.threads.filter((thread) => thread.id !== threadId);
 
-      // Always keep at least one thread
       if (remaining.length === 0) {
         const fresh = createThread();
         return { activeThreadId: fresh.id, threads: [fresh] };
       }
 
-      // If we deleted the active thread, activate the first remaining one
       const nextActiveId =
         current.activeThreadId === threadId ? (remaining[0]?.id ?? "") : current.activeThreadId;
 
@@ -482,13 +379,33 @@ export default function HomePage() {
   }
 
   function handleSignOut() {
-    // Clear this user's threads from state before wiping the session
     const freshThread = createThread();
     setThreadState({ activeThreadId: freshThread.id, threads: [freshThread] });
     setSession(null);
     setDocuments([]);
-    setObservability(null);
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+
+  function restoreThreads(userId: string) {
+    const freshThread = createThread();
+    const defaultState = { activeThreadId: freshThread.id, threads: [freshThread] };
+    const storedThreads = window.localStorage.getItem(threadStorageKey(userId));
+
+    if (!storedThreads) {
+      setThreadState(defaultState);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedThreads) as {
+        activeThreadId: string;
+        threads: ChatThread[];
+      };
+      setThreadState(parsed.threads.length > 0 ? parsed : defaultState);
+    } catch {
+      window.localStorage.removeItem(threadStorageKey(userId));
+      setThreadState(defaultState);
+    }
   }
 
   async function refreshDocuments(token = accessToken) {
@@ -508,41 +425,6 @@ export default function HomePage() {
       setUploadStatus(getErrorMessage(error));
     } finally {
       setDocumentsLoading(false);
-    }
-  }
-
-  async function refreshHealth() {
-    setHealthLoading(true);
-    try {
-      const response = await requestJson<{ checks: HealthCheck[] }>("/api/health", {
-        cache: "no-store",
-      });
-      setHealthChecks(response.checks);
-    } catch {
-      setHealthChecks([]);
-    } finally {
-      setHealthLoading(false);
-    }
-  }
-
-  async function refreshObservability(token = accessToken) {
-    if (!token) {
-      return;
-    }
-
-    setObservabilityLoading(true);
-    setObservabilityStatus(null);
-    try {
-      const response = await requestJson<ObservabilityResponse>("/api/observability", {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      });
-      setObservability(response);
-    } catch (error) {
-      setObservabilityStatus(getErrorMessage(error));
-    } finally {
-      setObservabilityLoading(false);
     }
   }
 
@@ -571,7 +453,7 @@ export default function HomePage() {
           </div>
           <div className="min-w-0">
             <p className="brand-name">Knoviq</p>
-            <p className="brand-subtitle">Document intelligence</p>
+            <p className="brand-subtitle">Document chat</p>
           </div>
         </div>
 
@@ -619,63 +501,18 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="rail-section">
-          <div className="section-heading">
-            <span>Files</span>
-            <button
-              className="mini-icon-button"
-              disabled={!accessToken || documentsLoading}
-              onClick={() => void refreshDocuments()}
-              title="Refresh files"
-              type="button"
-            >
-              <RefreshCw
-                className={documentsLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"}
-              />
-            </button>
-          </div>
-          <div className="file-list">
-            {documents.length === 0 ? (
-              <p className="muted-copy">Upload a PDF or TXT to start grounded chat.</p>
-            ) : (
-              documents.map((document) => (
-                <div className="file-item" key={document.documentId}>
-                  <FileText className="h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{document.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {document.chunkCount} chunks | {document.visibility}
-                    </p>
-                  </div>
-                  <button
-                    className="mini-icon-button"
-                    disabled={documentsLoading}
-                    onClick={() => void handleDeleteDocument(document)}
-                    title={`Delete ${document.title}`}
-                    type="button"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
         <section className="rail-section rail-auth">
-          <div className="section-heading">
-            <span>Session</span>
-            <span>{session ? session.user.role : "off"}</span>
-          </div>
           {session ? (
             <div className="session-box">
-              <p className="truncate text-sm font-semibold">{session.user.tenantName}</p>
-              <p className="truncate text-xs text-muted-foreground">{session.user.email}</p>
-              <button
-                className="secondary-button mt-3 w-full"
-                onClick={handleSignOut}
-                type="button"
-              >
+              <p className="session-name">{session.user.fullName || session.user.email}</p>
+              <p className="status-copy">Workspace: {session.user.tenantName}</p>
+              {isAdminRole(session.user.role) ? (
+                <a className="secondary-button w-full" href="/admin/monitoring">
+                  <ShieldCheck className="h-4 w-4" />
+                  Admin console
+                </a>
+              ) : null}
+              <button className="secondary-button w-full" onClick={handleSignOut} type="button">
                 Sign out
               </button>
             </div>
@@ -702,46 +539,23 @@ export default function HomePage() {
       <section className="chat-main">
         <header className="top-bar">
           <div>
-            <p className="eyebrow">Ask your files</p>
-            <h1>{activeThread?.title ?? "New chat"}</h1>
+            <p className="eyebrow">Workspace</p>
+            <h1>{activeThread?.title ?? "New document chat"}</h1>
           </div>
           <div className="service-strip">
-            {(healthChecks.length > 0 ? healthChecks : fallbackHealthChecks()).map((check) => (
-              <span className={check.ok ? "service-pill ok" : "service-pill"} key={check.key}>
-                {check.label}
-              </span>
-            ))}
-            <button className="mini-icon-button" onClick={() => void refreshHealth()} type="button">
-              <RefreshCw className={healthLoading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            </button>
+            <span className={documents.length > 0 ? "service-pill ok" : "service-pill"}>
+              {formatSourceCount(documents.length)}
+            </span>
           </div>
         </header>
 
         <div className="message-scroll">
-          {activeThread && activeThread.messages.length > 0 ? (
+          {activeThread?.messages.length ? (
             activeThread.messages.map((message) => (
-              <article className={`message-row ${message.role}`} key={message.id}>
-                <div className="message-avatar">
-                  {message.role === "user" ? "U" : <Sparkles className="h-4 w-4" />}
-                </div>
-                <div className="message-bubble">
-                  <div className="message-meta">
-                    <span>{message.role === "user" ? "You" : "Knoviq"}</span>
-                    <span>{formatTime(message.createdAt)}</span>
-                  </div>
-                  <p>{message.content}</p>
-                  {message.validation ? (
-                    <div className="validation-chip">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      {message.validation.status.replace("_", " ")} |{" "}
-                      {Math.round(message.validation.confidence * 100)}%
-                    </div>
-                  ) : null}
-                </div>
-              </article>
+              <MessageBubble key={message.id} message={message} />
             ))
           ) : (
-            <EmptyChat onSuggestion={(text) => setChatInput(text)} />
+            <StartWorkspace accessToken={accessToken} documents={documents} />
           )}
           {chatLoading ? (
             <article className="message-row assistant">
@@ -750,7 +564,7 @@ export default function HomePage() {
               </div>
               <div className="message-bubble typing">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Running retrieval, tools, synthesis, and validation
+                Reading your documents
               </div>
             </article>
           ) : null}
@@ -760,15 +574,11 @@ export default function HomePage() {
         <form className="composer" onSubmit={(event) => void handleChat(event)}>
           <textarea
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder="Ask anything about the uploaded files..."
+            placeholder="Ask about your documents..."
             rows={1}
             value={chatInput}
           />
-          <button
-            disabled={!accessToken || chatLoading || !chatInput.trim()}
-            title="Send"
-            type="submit"
-          >
+          <button disabled={chatLoading || !chatInput.trim()} title="Send message" type="submit">
             {chatLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
@@ -776,67 +586,23 @@ export default function HomePage() {
             )}
           </button>
         </form>
-        {chatStatus ? <p className="status-copy">{chatStatus}</p> : null}
+        {chatStatus ? <p className="composer-status">{chatStatus}</p> : null}
       </section>
 
-      <aside className="inspector">
-        <div className="inspector-tabs">
-          <button
-            className={inspectorTab === "sources" ? "active" : ""}
-            onClick={() => setInspectorTab("sources")}
-            type="button"
-          >
-            <FolderOpen className="h-4 w-4" />
-            Sources
-          </button>
-          <button
-            className={inspectorTab === "trace" ? "active" : ""}
-            onClick={() => setInspectorTab("trace")}
-            type="button"
-          >
-            <Workflow className="h-4 w-4" />
-            Trace
-          </button>
-          <button
-            className={inspectorTab === "monitor" ? "active" : ""}
-            onClick={() => {
-              setInspectorTab("monitor");
-              void refreshObservability();
-            }}
-            type="button"
-          >
-            <BarChart3 className="h-4 w-4" />
-            Monitor
-          </button>
-        </div>
-
-        {inspectorTab === "sources" ? (
-          <SourcesPanel
-            accessToken={accessToken}
-            documentTitle={documentTitle}
-            documents={documents}
-            documentsLoading={documentsLoading}
-            onDelete={handleDeleteDocument}
-            onFileChange={handleFileChange}
-            onTitleChange={setDocumentTitle}
-            onUpload={handleUpload}
-            selectedFile={selectedFile}
-            uploadStatus={uploadStatus}
-          />
-        ) : null}
-
-        {inspectorTab === "trace" ? (
-          <TracePanel latestAssistant={latestAssistant} toolCalls={latestToolCalls} />
-        ) : null}
-
-        {inspectorTab === "monitor" ? (
-          <MonitorPanel
-            loading={observabilityLoading}
-            monitor={monitor}
-            onRefresh={() => void refreshObservability()}
-            status={observabilityStatus}
-          />
-        ) : null}
+      <aside className="document-drawer">
+        <DocumentPanel
+          accessToken={accessToken}
+          documentTitle={documentTitle}
+          documents={documents}
+          documentsLoading={documentsLoading}
+          onDelete={handleDeleteDocument}
+          onFileChange={handleFileChange}
+          onRefresh={() => void refreshDocuments()}
+          onTitleChange={setDocumentTitle}
+          onUpload={handleUpload}
+          selectedFile={selectedFile}
+          uploadStatus={uploadStatus}
+        />
       </aside>
     </main>
   );
@@ -925,75 +691,73 @@ function AuthForm(props: {
   );
 }
 
-function EmptyChat(_props: { onSuggestion: (text: string) => void }) {
+function StartWorkspace(props: { accessToken: string | undefined; documents: DocumentSummary[] }) {
+  const docCount = props.documents.length;
+
   return (
     <div className="empty-chat">
       <div className="empty-chat-mark">
         <Sparkles className="h-8 w-8" />
       </div>
-      <p className="eyebrow">Knoviq · Document Intelligence</p>
-      <h2>Ask anything about your files.</h2>
-      <p>
-        Upload a PDF or TXT in the <strong style={{ color: "var(--primary)" }}>Sources</strong>{" "}
-        panel on the right, then ask questions here. Answers are grounded in your documents with
-        citations.
+      <div className="empty-chat-copy">
+        <p className="eyebrow">Enterprise AI Knowledge Assistant</p>
+        <h2>Ask anything about your knowledge base.</h2>
+      </div>
+      <p className="empty-chat-desc">
+        {!props.accessToken
+          ? "Sign in using the panel on the left to get started."
+          : docCount > 0
+            ? `${docCount} document${docCount !== 1 ? "s" : ""} ready. Type a question below — answers are grounded in your documents with citations.`
+            : "Upload a PDF or TXT in the Sources panel on the right, then ask a question here."}
       </p>
     </div>
   );
 }
 
-function SourcesPanel(props: {
+function DocumentPanel(props: {
   accessToken: string | undefined;
   documentTitle: string;
   documents: DocumentSummary[];
   documentsLoading: boolean;
   onDelete: (document: DocumentSummary) => Promise<void>;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onRefresh: () => void;
   onTitleChange: (value: string) => void;
   onUpload: (event: FormEvent<HTMLFormElement>) => void;
   selectedFile: File | null;
   uploadStatus: string | null;
 }) {
   return (
-    <div className="inspector-content">
-      <form className="source-upload" onSubmit={props.onUpload}>
-        <label>
-          Title
-          <input
-            onChange={(event) => props.onTitleChange(event.target.value)}
-            value={props.documentTitle}
-          />
-        </label>
-        <label className="compact-upload">
-          <Upload className="h-4 w-4" />
-          <span className="truncate">
-            {props.selectedFile ? props.selectedFile.name : "PDF or TXT"}
-          </span>
-          <input
-            accept=".txt,.text,.pdf,text/plain,application/pdf"
-            className="sr-only"
-            onChange={props.onFileChange}
-            type="file"
-          />
-        </label>
+    <>
+      <div className="drawer-header">
+        <div>
+          <p className="eyebrow">Documents</p>
+          <h2>Sources</h2>
+        </div>
         <button
-          className="primary-button w-full"
+          className="mini-icon-button"
           disabled={!props.accessToken || props.documentsLoading}
-          type="submit"
+          onClick={props.onRefresh}
+          title="Refresh documents"
+          type="button"
         >
-          {props.documentsLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4" />
-          )}
-          Upload
+          <RefreshCw className={props.documentsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
         </button>
-        {props.uploadStatus ? <p className="status-copy">{props.uploadStatus}</p> : null}
-      </form>
-
+      </div>
+      <UploadForm
+        accessToken={props.accessToken}
+        documentTitle={props.documentTitle}
+        documentsLoading={props.documentsLoading}
+        onFileChange={props.onFileChange}
+        onTitleChange={props.onTitleChange}
+        onUpload={props.onUpload}
+        selectedFile={props.selectedFile}
+        uploadStatus={props.uploadStatus}
+        variant="compact"
+      />
       <div className="source-list">
         {props.documents.length === 0 ? (
-          <p className="muted-copy">No documents in this tenant.</p>
+          <p className="muted-copy">No documents yet.</p>
         ) : (
           props.documents.map((document) => (
             <div className="source-row" key={document.documentId}>
@@ -1001,13 +765,15 @@ function SourcesPanel(props: {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{document.title}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {document.status} | {document.chunkCount} chunks
+                  {formatDocumentStatus(document.status)} -{" "}
+                  {formatSectionCount(document.chunkCount)}
                 </p>
               </div>
               <button
                 className="mini-icon-button"
                 disabled={props.documentsLoading}
                 onClick={() => void props.onDelete(document)}
+                title={`Delete ${document.title}`}
                 type="button"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1016,141 +782,143 @@ function SourcesPanel(props: {
           ))
         )}
       </div>
-    </div>
+    </>
   );
 }
 
-function TracePanel(props: { latestAssistant: ChatMessage | undefined; toolCalls: ToolCall[] }) {
-  return (
-    <div className="inspector-content">
-      {props.latestAssistant?.validation ? (
-        <div className="validation-panel">
-          <div className="flex items-center gap-2">
-            {props.latestAssistant.validation.status === "grounded" ? (
-              <CheckCircle2 className="h-5 w-5 text-success" />
-            ) : (
-              <CircleAlert className="h-5 w-5 text-warning" />
-            )}
-            <span>{props.latestAssistant.validation.status.replace("_", " ")}</span>
-          </div>
-          <div className="meter mt-4">
-            <span
-              style={{ width: `${Math.round(props.latestAssistant.validation.confidence * 100)}%` }}
-            />
-          </div>
-          <p className="status-copy">
-            Confidence {Math.round(props.latestAssistant.validation.confidence * 100)}%
-          </p>
-        </div>
-      ) : (
-        <p className="muted-copy">Run a chat to see validation and tool calls.</p>
-      )}
-
-      <div className="trace-list">
-        {props.toolCalls.length === 0 ? (
-          <p className="muted-copy">No tools used yet.</p>
-        ) : (
-          props.toolCalls.map((call, index) => (
-            <div className="trace-row" key={`${call.toolName}-${index}`}>
-              <span className={call.status === "succeeded" ? "status-dot ok" : "status-dot"} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{call.toolName}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {call.reason} | {call.latencyMs ?? 0}ms
-                </p>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      <InvoicePanel toolCalls={props.toolCalls} />
-    </div>
-  );
-}
-
-function MonitorPanel(props: {
-  loading: boolean;
-  monitor: ReturnType<typeof buildMonitorSummary>;
-  onRefresh: () => void;
-  status: string | null;
+function UploadForm(props: {
+  accessToken: string | undefined;
+  documentTitle: string;
+  documentsLoading: boolean;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onTitleChange: (value: string) => void;
+  onUpload: (event: FormEvent<HTMLFormElement>) => void;
+  selectedFile: File | null;
+  uploadStatus: string | null;
+  variant: "compact" | "hero";
 }) {
   return (
-    <div className="inspector-content">
-      <div className="monitor-header">
-        <div>
-          <p className="eyebrow">Observability</p>
-          <h2>Runtime monitor</h2>
-        </div>
-        <button className="mini-icon-button" onClick={props.onRefresh} type="button">
-          <RefreshCw className={props.loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-        </button>
-      </div>
-      {props.status ? <p className="status-copy">{props.status}</p> : null}
-      <div className="metric-grid">
-        <MetricTile
-          icon={<Clock3 className="h-4 w-4" />}
-          label="Avg latency"
-          value={`${props.monitor.averageLatencyMs}ms`}
+    <form
+      className={props.variant === "hero" ? "source-upload hero-upload" : "source-upload"}
+      onSubmit={props.onUpload}
+    >
+      <label>
+        Title
+        <input
+          onChange={(event) => props.onTitleChange(event.target.value)}
+          placeholder="Document title"
+          value={props.documentTitle}
         />
-        <MetricTile
-          icon={<Gauge className="h-4 w-4" />}
-          label="Throughput"
-          value={`${props.monitor.requestCount}`}
+      </label>
+      <label className="file-drop">
+        <Upload className="h-4 w-4" />
+        <span className="truncate">
+          {props.selectedFile ? props.selectedFile.name : "Choose PDF or TXT"}
+        </span>
+        <input
+          accept=".txt,.text,.pdf,text/plain,application/pdf"
+          className="sr-only"
+          onChange={props.onFileChange}
+          type="file"
         />
-        <MetricTile
-          icon={<Activity className="h-4 w-4" />}
-          label="LLM requests"
-          value={`${props.monitor.llmRequests}`}
-        />
-        <MetricTile
-          icon={<Receipt className="h-4 w-4" />}
-          label="LLM cost"
-          value={`$${props.monitor.llmCostUsd}`}
-        />
-      </div>
-      <section className="monitor-section">
-        <h3>Service latency</h3>
-        {props.monitor.serviceLatency.length === 0 ? (
-          <p className="muted-copy">No latency samples yet.</p>
+      </label>
+      <button
+        className="primary-button w-full"
+        disabled={!props.accessToken || props.documentsLoading}
+        type="submit"
+      >
+        {props.documentsLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          props.monitor.serviceLatency.map((metric, index) => (
-            <div className="metric-row" key={`${metric.service}-${metric.metric}-${index}`}>
-              <span>{metric.service}</span>
-              <strong>{metric.average}ms</strong>
-            </div>
-          ))
+          <Upload className="h-4 w-4" />
         )}
-      </section>
-      <section className="monitor-section">
-        <h3>Tool health</h3>
-        {props.monitor.toolRows.length === 0 ? (
-          <p className="muted-copy">No tool executions yet.</p>
-        ) : (
-          props.monitor.toolRows.map((row) => (
-            <div className="metric-row" key={`${row.toolName}-${row.status}`}>
-              <span>
-                {row.toolName} | {row.status}
-              </span>
-              <strong>{row.count}</strong>
-            </div>
-          ))
-        )}
-      </section>
-    </div>
+        Upload document
+      </button>
+      {props.uploadStatus ? <p className="status-copy">{props.uploadStatus}</p> : null}
+    </form>
   );
 }
 
-function MetricTile(props: { icon: React.ReactNode; label: string; value: string }) {
+function MessageBubble(props: { message: ChatMessage }) {
+  const sources = extractSources(props.message.toolCalls ?? []);
+
   return (
-    <div className="metric-tile">
-      {props.icon}
-      <span>{props.label}</span>
-      <strong>{props.value}</strong>
+    <article
+      className={props.message.role === "user" ? "message-row user" : "message-row assistant"}
+    >
+      <div className="message-avatar">
+        {props.message.role === "user" ? "You" : <Sparkles className="h-4 w-4" />}
+      </div>
+      <div className="message-bubble">
+        <div className="message-meta">
+          <span>{props.message.role === "user" ? "You" : "Knoviq"}</span>
+          <span>{formatTime(props.message.createdAt)}</span>
+        </div>
+        <p>{props.message.content}</p>
+        {props.message.role === "assistant" ? (
+          <>
+            <EvidenceChip sourcesCount={sources.length} validation={props.message.validation} />
+            <MessageSources sources={sources} />
+            <InvoiceSummary toolCalls={props.message.toolCalls ?? []} />
+          </>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function EvidenceChip(props: {
+  sourcesCount: number;
+  validation: ChatResponse["validation"] | undefined;
+}) {
+  if (!props.validation) {
+    return null;
+  }
+
+  if (props.validation.status === "unsupported") {
+    return (
+      <div className="validation-chip warning">
+        <CircleAlert className="h-3.5 w-3.5" />
+        Not enough document evidence
+      </div>
+    );
+  }
+
+  return (
+    <div className="validation-chip">
+      <CheckCircle2 className="h-3.5 w-3.5" />
+      {props.sourcesCount > 0
+        ? `Answered from ${props.sourcesCount} source${props.sourcesCount === 1 ? "" : "s"}`
+        : "Answer checked"}
     </div>
   );
 }
 
-function InvoicePanel(props: { toolCalls: ToolCall[] }) {
+function MessageSources(props: { sources: SourceReference[] }) {
+  if (props.sources.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="message-sources">
+      <summary>
+        <BookOpen className="h-3.5 w-3.5" />
+        Sources
+      </summary>
+      <div className="source-excerpts">
+        {props.sources.map((source) => (
+          <div className="source-excerpt" key={source.chunkId}>
+            <strong>{source.documentTitle}</strong>
+            <span>{source.pageLabel}</span>
+            {source.excerpt ? <p>{source.excerpt}</p> : null}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function InvoiceSummary(props: { toolCalls: ToolCall[] }) {
   const invoiceTool = props.toolCalls.find(
     (call) => call.toolName === "document.extract_invoice_fields",
   );
@@ -1164,7 +932,7 @@ function InvoicePanel(props: { toolCalls: ToolCall[] }) {
     <div className="invoice-panel">
       <div className="flex items-center gap-2">
         <Receipt className="h-4 w-4 text-primary" />
-        <span className="font-semibold">Invoice extraction</span>
+        <span className="font-semibold">Extracted expenses</span>
       </div>
       <div className="mt-3 space-y-2">
         {output.invoices.map((invoice, index) => (
@@ -1201,71 +969,63 @@ async function requestJson<TResponse>(
   return data as TResponse;
 }
 
-function buildMonitorSummary(data: ObservabilityResponse | null) {
-  const serviceRows = data?.service_metric_summary?.output?.rows ?? [];
-  const llmRows = data?.llm_usage_summary?.output?.rows ?? [];
-  const toolRowsRaw = data?.tool_execution_summary?.output?.rows ?? [];
-  const requestMetrics = serviceRows.filter(
-    (row) => asString(row.metric_name) === "http.server.requests",
-  );
-  const latencyMetrics = serviceRows.filter(
-    (row) => asString(row.metric_name) === "http.server.duration",
-  );
-  const requestCount = requestMetrics.reduce((sum, row) => sum + asNumber(row.sample_count), 0);
-  const averageLatencyMs =
-    latencyMetrics.length === 0
-      ? 0
-      : Math.round(
-          latencyMetrics.reduce((sum, row) => sum + asNumber(row.average_value), 0) /
-            latencyMetrics.length,
-        );
-  const llmRequests = llmRows.reduce((sum, row) => sum + asNumber(row.request_count), 0);
-  const llmCostUsd = llmRows
-    .reduce((sum, row) => sum + asNumber(row.estimated_cost_usd), 0)
-    .toFixed(4);
+function extractSources(toolCalls: ToolCall[]): SourceReference[] {
+  const sources: SourceReference[] = [];
+  const seen = new Set<string>();
 
-  return {
-    averageLatencyMs,
-    llmCostUsd,
-    llmRequests,
-    requestCount,
-    // Group by (service, metric) and average across multiple DB rows for the same pair.
-    // Multiple rows for the same service+metric arise when the query returns one row
-    // per route or time bucket. The panel shows one representative average per pair.
-    serviceLatency: (() => {
-      const grouped = new Map<
-        string,
-        { sum: number; count: number; service: string; metric: string }
-      >();
-      for (const row of latencyMetrics) {
-        const svc = asString(row.service_name);
-        const met = asString(row.metric_name);
-        const key = `${svc}||${met}`;
-        const existing = grouped.get(key);
-        if (existing) {
-          existing.sum += asNumber(row.average_value);
-          existing.count += 1;
-        } else {
-          grouped.set(key, {
-            sum: asNumber(row.average_value),
-            count: 1,
-            service: svc,
-            metric: met,
-          });
-        }
+  for (const call of toolCalls) {
+    if (call.toolName !== "knowledge.retrieve" || call.status !== "succeeded") {
+      continue;
+    }
+
+    const results = parseRetrievalResults(call.output);
+
+    for (const result of results) {
+      if (seen.has(result.chunkId)) {
+        continue;
       }
-      return [...grouped.values()].slice(0, 6).map((entry) => ({
-        average: Math.round(entry.sum / entry.count),
-        metric: entry.metric,
-        service: entry.service,
-      }));
-    })(),
-    toolRows: toolRowsRaw.slice(0, 8).map((row) => ({
-      count: asNumber(row.count),
-      status: asString(row.status),
-      toolName: asString(row.tool_name),
-    })),
-  };
+
+      seen.add(result.chunkId);
+      sources.push(result);
+    }
+  }
+
+  return sources.slice(0, 5);
+}
+
+function parseRetrievalResults(output: unknown): SourceReference[] {
+  if (!output || typeof output !== "object") {
+    return [];
+  }
+
+  const results = (output as { results?: unknown[] }).results;
+
+  if (!Array.isArray(results)) {
+    return [];
+  }
+
+  return results.flatMap((result) => {
+    if (!result || typeof result !== "object") {
+      return [];
+    }
+
+    const record = result as Record<string, unknown>;
+    const chunkId = typeof record.chunkId === "string" ? record.chunkId : crypto.randomUUID();
+    const documentTitle =
+      typeof record.documentTitle === "string" ? record.documentTitle : "Uploaded document";
+    const pageStart = typeof record.sourcePageStart === "number" ? record.sourcePageStart : null;
+    const excerpt =
+      typeof record.chunkContent === "string" ? truncateText(record.chunkContent, 220) : undefined;
+
+    return [
+      {
+        chunkId,
+        documentTitle,
+        ...(excerpt ? { excerpt } : {}),
+        pageLabel: pageStart ? `Page ${pageStart}` : "Matched section",
+      },
+    ];
+  });
 }
 
 function parseInvoiceOutput(data: unknown): {
@@ -1314,21 +1074,6 @@ function createThread(): ChatThread {
   };
 }
 
-function findLatestAssistant(thread: ChatThread | undefined): ChatMessage | undefined {
-  if (!thread) {
-    return undefined;
-  }
-
-  for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-    const message = thread.messages[index];
-    if (message?.role === "assistant") {
-      return message;
-    }
-  }
-
-  return undefined;
-}
-
 function titleFromMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim().slice(0, 52) || "Document chat";
 }
@@ -1363,20 +1108,45 @@ function formatTime(value: string): string {
   });
 }
 
-function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
+function formatSourceCount(count: number): string {
+  if (count === 0) {
+    return "No sources yet";
+  }
+
+  return `${count} source${count === 1 ? "" : "s"} ready`;
 }
 
-function asNumber(value: unknown): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+function formatSectionCount(count: number): string {
+  return `${count} section${count === 1 ? "" : "s"}`;
 }
 
-function fallbackHealthChecks(): HealthCheck[] {
-  return [
-    { key: "auth", label: "Auth", latencyMs: 0, ok: false, status: 0 },
-    { key: "ai", label: "AI Gateway", latencyMs: 0, ok: false, status: 0 },
-    { key: "knowledge", label: "Knowledge", latencyMs: 0, ok: false, status: 0 },
-    { key: "tools", label: "Tools", latencyMs: 0, ok: false, status: 0 },
-  ];
+function formatDocumentStatus(status: string): string {
+  switch (status.toLowerCase()) {
+    case "completed":
+    case "processed":
+    case "ready":
+      return "Ready";
+    case "failed":
+    case "error":
+      return "Needs attention";
+    case "processing":
+    case "queued":
+    case "uploaded":
+      return "Preparing";
+    default:
+      return titleCase(status);
+  }
+}
+
+function titleCase(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength - 1)}...` : collapsed;
 }
