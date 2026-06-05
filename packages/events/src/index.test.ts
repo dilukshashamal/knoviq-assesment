@@ -106,7 +106,11 @@ describe("createDomainEvent", () => {
 
   it("includes the data payload", () => {
     const data = { conversationId: "conv-123", messageCount: 5 };
-    const event = createDomainEvent({ data, eventType: "conversation.created", serviceName: "svc" });
+    const event = createDomainEvent({
+      data,
+      eventType: "conversation.created",
+      serviceName: "svc",
+    });
     expect(event.data).toEqual(data);
   });
 

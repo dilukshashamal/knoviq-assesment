@@ -325,7 +325,10 @@ export default function HomePage() {
       if (!response.ok) {
         let errorMsg = `Request failed (${response.status.toString()})`;
         try {
-          errorMsg = extractApiMessage(JSON.parse(await response.text()) as ApiErrorBody, response.status);
+          errorMsg = extractApiMessage(
+            JSON.parse(await response.text()) as ApiErrorBody,
+            response.status,
+          );
         } catch {
           // ignore parse error
         }

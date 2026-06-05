@@ -16,11 +16,7 @@ import {
   hashRefreshToken,
   getRefreshTokenExpiry,
 } from "./refresh-token.js";
-import {
-  RegisterRequestSchema,
-  LoginRequestSchema,
-  RefreshTokenRequestSchema,
-} from "./schemas.js";
+import { RegisterRequestSchema, LoginRequestSchema, RefreshTokenRequestSchema } from "./schemas.js";
 
 // ── RegisterRequestSchema ─────────────────────────────────────────────────────
 
@@ -42,7 +38,9 @@ describe("RegisterRequestSchema", () => {
   });
 
   it("rejects invalid email format", () => {
-    expect(RegisterRequestSchema.safeParse({ ...valid, email: "not-an-email" }).success).toBe(false);
+    expect(RegisterRequestSchema.safeParse({ ...valid, email: "not-an-email" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects password shorter than 12 characters", () => {
@@ -97,15 +95,13 @@ describe("LoginRequestSchema", () => {
 
 describe("RefreshTokenRequestSchema", () => {
   it("accepts a token with 32+ characters", () => {
-    expect(
-      RefreshTokenRequestSchema.safeParse({ refreshToken: "a".repeat(32) }).success,
-    ).toBe(true);
+    expect(RefreshTokenRequestSchema.safeParse({ refreshToken: "a".repeat(32) }).success).toBe(
+      true,
+    );
   });
 
   it("rejects a token shorter than 32 characters", () => {
-    expect(
-      RefreshTokenRequestSchema.safeParse({ refreshToken: "short" }).success,
-    ).toBe(false);
+    expect(RefreshTokenRequestSchema.safeParse({ refreshToken: "short" }).success).toBe(false);
   });
 });
 

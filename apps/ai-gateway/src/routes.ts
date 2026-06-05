@@ -154,7 +154,7 @@ function requirePrincipal(request: FastifyRequest) {
 function prepareSse(reply: FastifyReply): void {
   reply.raw.writeHead(200, {
     "cache-control": "no-cache",
-    "connection": "keep-alive",
+    connection: "keep-alive",
     "content-type": "text/event-stream; charset=utf-8",
     "transfer-encoding": "chunked",
     "x-accel-buffering": "no",

@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createCacheKey,
-  createCacheClient,
-  loadCacheSettings,
-  withCachePrefix,
-} from "./index.js";
+import { createCacheKey, createCacheClient, loadCacheSettings, withCachePrefix } from "./index.js";
 
 // ── loadCacheSettings ─────────────────────────────────────────────────────────
 

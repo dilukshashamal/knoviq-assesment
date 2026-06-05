@@ -102,31 +102,31 @@ Shared packages are compile-time dependencies only — no runtime coupling.
 
 ### Key Package Versions
 
-| Package | Version |
-| ------- | ------- |
-| Fastify | 5.8.5 |
-| @fastify/rate-limit | 10.3.0 |
-| @fastify/websocket | 11.2.0 |
-| @fastify/multipart | 10.0.0 |
-| Next.js | 16.2.x |
-| React | 19.2.x |
-| TypeScript | 5.9.3 |
-| openai (SDK) | 6.41.0 |
-| zod | 4.4.3 |
-| Node.js (runtime) | 22.x |
-| pnpm | 10.13.1 |
+| Package             | Version |
+| ------------------- | ------- |
+| Fastify             | 5.8.5   |
+| @fastify/rate-limit | 10.3.0  |
+| @fastify/websocket  | 11.2.0  |
+| @fastify/multipart  | 10.0.0  |
+| Next.js             | 16.2.x  |
+| React               | 19.2.x  |
+| TypeScript          | 5.9.3   |
+| openai (SDK)        | 6.41.0  |
+| zod                 | 4.4.3   |
+| Node.js (runtime)   | 22.x    |
+| pnpm                | 10.13.1 |
 
 ### Data Ownership
 
 No service reads from another service's database tables. All cross-service access goes through HTTP.
 
-| Service | Owns tables |
-| ------- | ----------- |
-| Auth | `tenants`, `users`, `tenant_memberships`, `refresh_tokens`, `audit_logs` |
-| Knowledge | `documents`, `document_access_grants`, `document_chunks`, `embedding_cache` |
-| AI Gateway | `conversations`, `messages`, `message_citations`, `llm_usage` |
-| Tool Execution | `tool_executions` |
-| All services | `service_metrics` (each writes its own rows) |
+| Service        | Owns tables                                                                 |
+| -------------- | --------------------------------------------------------------------------- |
+| Auth           | `tenants`, `users`, `tenant_memberships`, `refresh_tokens`, `audit_logs`    |
+| Knowledge      | `documents`, `document_access_grants`, `document_chunks`, `embedding_cache` |
+| AI Gateway     | `conversations`, `messages`, `message_citations`, `llm_usage`               |
+| Tool Execution | `tool_executions`                                                           |
+| All services   | `service_metrics` (each writes its own rows)                                |
 
 ---
 
@@ -134,12 +134,12 @@ No service reads from another service's database tables. All cross-service acces
 
 ### Prerequisites
 
-| Requirement | Version |
-| ----------- | ------- |
-| Node.js | `≥ 20.9` (`22.x` recommended) |
-| pnpm | `10.13.1` |
-| Docker Desktop / Engine | `≥ 24` |
-| Azure OpenAI resource | Required for production |
+| Requirement             | Version                       |
+| ----------------------- | ----------------------------- |
+| Node.js                 | `≥ 20.9` (`22.x` recommended) |
+| pnpm                    | `10.13.1`                     |
+| Docker Desktop / Engine | `≥ 24`                        |
+| Azure OpenAI resource   | Required for production       |
 
 ### Install pnpm
 
@@ -215,55 +215,55 @@ refuse to start if required variables are missing or malformed.
 
 ### Azure OpenAI (required for production)
 
-| Variable | Description |
-| -------- | ----------- |
-| `AZURE_OPENAI_ENDPOINT` | Your Azure OpenAI resource endpoint URL |
-| `AZURE_OPENAI_API_KEY` | API key for the resource |
-| `AZURE_OPENAI_API_VERSION` | API version, default `2025-04-01-preview` |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST` | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING` | Reasoning model (e.g. `gpt-4o`) — answer synthesis only |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding model (e.g. `text-embedding-3-small`) |
-| `AZURE_OPENAI_EMBEDDING_DIMENSIONS` | Embedding dimensions, default `1536` |
+| Variable                                 | Description                                                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `AZURE_OPENAI_ENDPOINT`                  | Your Azure OpenAI resource endpoint URL                                            |
+| `AZURE_OPENAI_API_KEY`                   | API key for the resource                                                           |
+| `AZURE_OPENAI_API_VERSION`               | API version, default `2025-04-01-preview`                                          |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_FAST`      | Fast model (e.g. `gpt-4o-mini`) — planner, validator, reranker, invoice extraction |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_REASONING` | Reasoning model (e.g. `gpt-4o`) — answer synthesis only                            |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`      | Embedding model (e.g. `text-embedding-3-small`)                                    |
+| `AZURE_OPENAI_EMBEDDING_DIMENSIONS`      | Embedding dimensions, default `1536`                                               |
 
 ### Auth / JWT
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `JWT_ACCESS_SECRET` | — | Min 32-char secret, shared across all services for local JWT verification |
-| `JWT_REFRESH_SECRET` | — | Min 32-char secret for refresh tokens |
-| `JWT_ACCESS_TTL_SECONDS` | `900` | Access token lifetime (15 minutes) |
-| `JWT_REFRESH_TTL_SECONDS` | `2592000` | Refresh token lifetime (30 days) |
+| Variable                  | Default   | Description                                                               |
+| ------------------------- | --------- | ------------------------------------------------------------------------- |
+| `JWT_ACCESS_SECRET`       | —         | Min 32-char secret, shared across all services for local JWT verification |
+| `JWT_REFRESH_SECRET`      | —         | Min 32-char secret for refresh tokens                                     |
+| `JWT_ACCESS_TTL_SECONDS`  | `900`     | Access token lifetime (15 minutes)                                        |
+| `JWT_REFRESH_TTL_SECONDS` | `2592000` | Refresh token lifetime (30 days)                                          |
 
 ### Knowledge Service Tuning
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `KNOWLEDGE_CHUNK_TARGET_CHARS` | `1800` | Target characters per chunk |
-| `KNOWLEDGE_CHUNK_OVERLAP_CHARS` | `250` | Overlap between consecutive chunks |
-| `KNOWLEDGE_SEARCH_LIMIT` | `8` | Final chunks returned to agent (5=fast, 8=balanced, 10=summarisation) |
-| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2` | Minimum cosine similarity for vector arm |
-| `KNOWLEDGE_RERANK_ENABLED` | `true` | Enable LLM reranking after hybrid retrieval |
-| `KNOWLEDGE_RERANK_CANDIDATES` | `24` | Candidate pool for reranker (should be 3–4× search limit) |
+| Variable                          | Default | Description                                                           |
+| --------------------------------- | ------- | --------------------------------------------------------------------- |
+| `KNOWLEDGE_CHUNK_TARGET_CHARS`    | `1800`  | Target characters per chunk                                           |
+| `KNOWLEDGE_CHUNK_OVERLAP_CHARS`   | `250`   | Overlap between consecutive chunks                                    |
+| `KNOWLEDGE_SEARCH_LIMIT`          | `8`     | Final chunks returned to agent (5=fast, 8=balanced, 10=summarisation) |
+| `KNOWLEDGE_SEARCH_MIN_SIMILARITY` | `0.2`   | Minimum cosine similarity for vector arm                              |
+| `KNOWLEDGE_RERANK_ENABLED`        | `true`  | Enable LLM reranking after hybrid retrieval                           |
+| `KNOWLEDGE_RERANK_CANDIDATES`     | `24`    | Candidate pool for reranker (should be 3–4× search limit)             |
 
 ### Infrastructure
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `DATABASE_URL` | — | Full PostgreSQL connection string |
-| `DB_POOL_MAX` | `10` | Max pg connections per service process |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-| `REDIS_ENABLED` | `true` | Set `false` to disable caching |
-| `KAFKA_ENABLED` | `true` | Set `false` to disable event publishing |
-| `KAFKA_BROKERS` | `127.0.0.1:29092` | Comma-separated Kafka broker addresses |
+| Variable        | Default                  | Description                             |
+| --------------- | ------------------------ | --------------------------------------- |
+| `DATABASE_URL`  | —                        | Full PostgreSQL connection string       |
+| `DB_POOL_MAX`   | `10`                     | Max pg connections per service process  |
+| `REDIS_URL`     | `redis://localhost:6379` | Redis connection URL                    |
+| `REDIS_ENABLED` | `true`                   | Set `false` to disable caching          |
+| `KAFKA_ENABLED` | `true`                   | Set `false` to disable event publishing |
+| `KAFKA_BROKERS` | `127.0.0.1:29092`        | Comma-separated Kafka broker addresses  |
 
 ### LLM Cost Controls
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | `1200` | Hard token cap on synthesis output |
-| `LLM_MEMORY_MAX_MESSAGES` | `12` | Conversation history window |
-| `LLM_RATE_LIMIT_MAX_REQUESTS` | `30` | Max LLM chat requests per window per user |
-| `LLM_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window in seconds |
+| Variable                        | Default | Description                               |
+| ------------------------------- | ------- | ----------------------------------------- |
+| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | `1200`  | Hard token cap on synthesis output        |
+| `LLM_MEMORY_MAX_MESSAGES`       | `12`    | Conversation history window               |
+| `LLM_RATE_LIMIT_MAX_REQUESTS`   | `30`    | Max LLM chat requests per window per user |
+| `LLM_RATE_LIMIT_WINDOW_SECONDS` | `60`    | Rate limit window in seconds              |
 
 ---
 
@@ -367,12 +367,12 @@ agentRunner.run(input)
 
 ### 4.3 Available Tools
 
-| Tool | Where it runs | When selected |
-| ---- | ------------- | ------------- |
-| `knowledge.retrieve` | Knowledge Service `/search` | All factual, policy, document questions |
-| `calculator.evaluate` | In-process recursive descent parser (no `eval()`) | Numeric arithmetic; invoice total verification |
-| `sql.query_safe` | PostgreSQL — 9 named read-only operations | Platform metrics, document counts, cost reports |
-| `document.extract_invoice_fields` | Azure gpt-4o-mini JSON mode | Invoice summarisation (auto-chained after retrieval) |
+| Tool                              | Where it runs                                     | When selected                                        |
+| --------------------------------- | ------------------------------------------------- | ---------------------------------------------------- |
+| `knowledge.retrieve`              | Knowledge Service `/search`                       | All factual, policy, document questions              |
+| `calculator.evaluate`             | In-process recursive descent parser (no `eval()`) | Numeric arithmetic; invoice total verification       |
+| `sql.query_safe`                  | PostgreSQL — 9 named read-only operations         | Platform metrics, document counts, cost reports      |
+| `document.extract_invoice_fields` | Azure gpt-4o-mini JSON mode                       | Invoice summarisation (auto-chained after retrieval) |
 
 `sql.query_safe` allowlisted operations: `answer_quality_incidents`, `answer_quality_trend`,
 `answer_validation_summary`, `document_count`, `list_documents`, `llm_usage_summary`,
@@ -382,17 +382,17 @@ agentRunner.run(input)
 
 The stream emits these event types in order. The frontend processes each block as it arrives:
 
-| Event type | Data | Purpose |
-| ---------- | ---- | ------- |
-| `conversation` | `{ conversationId }` | New conversation created |
-| `agent_step` | `{ agent, status, ... }` | Pipeline phase status update |
-| `message` | `{ messageId, role }` | User message persisted |
-| `tool_start` | `{ toolName, arguments, reason }` | Tool call beginning |
-| `tool_result` | `ExecutedToolCall` | Tool call completed |
-| `validation` | `{ status, confidence, issues }` | Validator result |
-| `final` | `AgentRunResult` | Complete answer — triggers UI render |
-| `done` | `"[DONE]"` | Stream closing signal |
-| `error` | `{ message }` | Pipeline error |
+| Event type     | Data                              | Purpose                              |
+| -------------- | --------------------------------- | ------------------------------------ |
+| `conversation` | `{ conversationId }`              | New conversation created             |
+| `agent_step`   | `{ agent, status, ... }`          | Pipeline phase status update         |
+| `message`      | `{ messageId, role }`             | User message persisted               |
+| `tool_start`   | `{ toolName, arguments, reason }` | Tool call beginning                  |
+| `tool_result`  | `ExecutedToolCall`                | Tool call completed                  |
+| `validation`   | `{ status, confidence, issues }`  | Validator result                     |
+| `final`        | `AgentRunResult`                  | Complete answer — triggers UI render |
+| `done`         | `"[DONE]"`                        | Stream closing signal                |
+| `error`        | `{ message }`                     | Pipeline error                       |
 
 ---
 
@@ -496,10 +496,10 @@ kubectl scale deployment tool-execution-service --replicas=4
 
 ### Redis Caching
 
-| What | TTL |
-| ---- | --- |
-| Tool definitions | 300s |
-| Hybrid search results | 60s |
+| What                  | TTL  |
+| --------------------- | ---- |
+| Tool definitions      | 300s |
+| Hybrid search results | 60s  |
 
 Set `REDIS_ENABLED=false` — a `DisabledCacheClient` no-op takes over, no code changes needed.
 
@@ -513,14 +513,14 @@ two silently loses the event. The transactional outbox pattern is the documented
 
 ### LLM Cost Controls
 
-| Mechanism | Implementation |
-| --------- | -------------- |
-| Token budget | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200` |
-| Memory window | `LLM_MEMORY_MAX_MESSAGES=12` |
-| Rerank pool | `KNOWLEDGE_RERANK_CANDIDATES=24` |
-| Model routing | Planning + validation → gpt-4o-mini; synthesis → gpt-4o |
-| Per-model pricing | `@knoviq/observability` built-in table (gpt-4o-mini, gpt-4o, text-embedding-3-*) |
-| Embedding cache | Content-hash dedup; never re-embeds identical text |
+| Mechanism         | Implementation                                                                    |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Token budget      | `LLM_DEFAULT_MAX_OUTPUT_TOKENS=1200`                                              |
+| Memory window     | `LLM_MEMORY_MAX_MESSAGES=12`                                                      |
+| Rerank pool       | `KNOWLEDGE_RERANK_CANDIDATES=24`                                                  |
+| Model routing     | Planning + validation → gpt-4o-mini; synthesis → gpt-4o                           |
+| Per-model pricing | `@knoviq/observability` built-in table (gpt-4o-mini, gpt-4o, text-embedding-3-\*) |
+| Embedding cache   | Content-hash dedup; never re-embeds identical text                                |
 
 ---
 
@@ -648,16 +648,16 @@ pnpm build          REM full production build
 
 ### Test Coverage
 
-| Package / App | Tests | What is tested |
-| ------------- | ----- | -------------- |
-| `@knoviq/auth-service` | 25 | Zod schemas, JWT helpers, argon2 password hashing/verify, HMAC refresh token, expiry calculation |
-| `@knoviq/ai-gateway` | 21 | Agent heuristics (greeting detection, invoice workflow), tool policy normalization, rate limiter |
-| `@knoviq/tool-execution-service` | 11 | Calculator — all operators, precedence, parentheses, precision, edge cases |
-| `@knoviq/knowledge-service` | 9 | Chunker — structural splits, semantic windows, keyword extraction, overlap, hash |
-| `@knoviq/cache` | 19 | `loadCacheSettings`, `createCacheKey` (determinism, order independence), `DisabledCacheClient` |
-| `@knoviq/events` | 17 | `loadEventBusSettings`, `resolveTopic`, `createDomainEvent`, `DisabledEventPublisher` |
-| `@knoviq/observability` | 14 | `createTimer`, `createRequestId`, `estimateLlmCostUsd` (all model tiers, fallback, zero tokens) |
-| `@knoviq/web` | 16 | `threadStorageKey`, `isAdminRole`, `SESSION_STORAGE_KEY` |
+| Package / App                    | Tests | What is tested                                                                                   |
+| -------------------------------- | ----- | ------------------------------------------------------------------------------------------------ |
+| `@knoviq/auth-service`           | 25    | Zod schemas, JWT helpers, argon2 password hashing/verify, HMAC refresh token, expiry calculation |
+| `@knoviq/ai-gateway`             | 21    | Agent heuristics (greeting detection, invoice workflow), tool policy normalization, rate limiter |
+| `@knoviq/tool-execution-service` | 11    | Calculator — all operators, precedence, parentheses, precision, edge cases                       |
+| `@knoviq/knowledge-service`      | 9     | Chunker — structural splits, semantic windows, keyword extraction, overlap, hash                 |
+| `@knoviq/cache`                  | 19    | `loadCacheSettings`, `createCacheKey` (determinism, order independence), `DisabledCacheClient`   |
+| `@knoviq/events`                 | 17    | `loadEventBusSettings`, `resolveTopic`, `createDomainEvent`, `DisabledEventPublisher`            |
+| `@knoviq/observability`          | 14    | `createTimer`, `createRequestId`, `estimateLlmCostUsd` (all model tiers, fallback, zero tokens)  |
+| `@knoviq/web`                    | 16    | `threadStorageKey`, `isAdminRole`, `SESSION_STORAGE_KEY`                                         |
 
 All tests run without a database, Redis, Kafka, or Azure connection — pure function and
 unit tests only.
@@ -670,29 +670,31 @@ All endpoints require `Authorization: Bearer <accessToken>` except auth register
 
 ### Auth Service (port 4001)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | `/auth/register` | Register new user and tenant |
-| POST | `/auth/login` | Login — returns access + refresh tokens |
-| POST | `/auth/refresh` | Rotate refresh token |
-| POST | `/auth/logout` | Revoke refresh token |
-| GET | `/health` | Service health check |
+| Method | Path             | Description                             |
+| ------ | ---------------- | --------------------------------------- |
+| POST   | `/auth/register` | Register new user and tenant            |
+| POST   | `/auth/login`    | Login — returns access + refresh tokens |
+| POST   | `/auth/refresh`  | Rotate refresh token                    |
+| POST   | `/auth/logout`   | Revoke refresh token                    |
+| GET    | `/health`        | Service health check                    |
 
 ### AI Gateway (port 4002)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | `/chat` | Sync chat — returns `AgentRunResult` JSON |
-| POST | `/chat/stream` | SSE streaming chat — emits step events then `final` |
-| GET | `/chat/ws` | WebSocket chat |
-| GET | `/health` | Service health check |
+| Method | Path           | Description                                         |
+| ------ | -------------- | --------------------------------------------------- |
+| POST   | `/chat`        | Sync chat — returns `AgentRunResult` JSON           |
+| POST   | `/chat/stream` | SSE streaming chat — emits step events then `final` |
+| GET    | `/chat/ws`     | WebSocket chat                                      |
+| GET    | `/health`      | Service health check                                |
 
 Chat request body:
+
 ```json
 { "message": "Summarise the access policy", "conversationId": "optional-uuid" }
 ```
 
 Chat response (`AgentRunResult`):
+
 ```json
 {
   "answer": "...",
@@ -712,21 +714,21 @@ Chat response (`AgentRunResult`):
 
 ### Knowledge Service (port 4003)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | `/documents` | Upload PDF or TXT (multipart, max 10MB) |
-| GET | `/documents` | List accessible documents |
-| DELETE | `/documents/:documentId` | Delete a document |
-| POST | `/search` | Direct hybrid search (used internally by tool client) |
-| GET | `/health` | Service health check |
+| Method | Path                     | Description                                           |
+| ------ | ------------------------ | ----------------------------------------------------- |
+| POST   | `/documents`             | Upload PDF or TXT (multipart, max 10MB)               |
+| GET    | `/documents`             | List accessible documents                             |
+| DELETE | `/documents/:documentId` | Delete a document                                     |
+| POST   | `/search`                | Direct hybrid search (used internally by tool client) |
+| GET    | `/health`                | Service health check                                  |
 
 ### Tool Execution Service (port 4004)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | `/tools` | List all tool definitions |
-| POST | `/tools/execute` | Execute a named tool with arguments |
-| GET | `/health` | Service health check |
+| Method | Path             | Description                         |
+| ------ | ---------------- | ----------------------------------- |
+| GET    | `/tools`         | List all tool definitions           |
+| POST   | `/tools/execute` | Execute a named tool with arguments |
+| GET    | `/health`        | Service health check                |
 
 ---
 
@@ -814,15 +816,16 @@ Default replicas: auth=2, ai-gateway=2, knowledge=1 (ReadWriteOnce upload volume
 
 **`.github/workflows/ci.yml`** — PR and push to `main`:
 
-| Job | Steps |
-| --- | ----- |
-| `quality` | install → format check → `tsc -b` build → lint → typecheck → `pnpm test` (132 tests) |
-| `docker` | `docker buildx build --check` for all 4 backend Dockerfiles |
-| `manifests` | `kubectl kustomize infra/k8s/base` + validate required resource names |
+| Job         | Steps                                                                                |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `quality`   | install → format check → `tsc -b` build → lint → typecheck → `pnpm test` (132 tests) |
+| `docker`    | `docker buildx build --check` for all 4 backend Dockerfiles                          |
+| `manifests` | `kubectl kustomize infra/k8s/base` + validate required resource names                |
 
 **`.github/workflows/container-publish.yml`** — semver tags (`v*.*.*`):
 
 Builds and pushes to GitHub Container Registry:
+
 ```
 ghcr.io/<owner>/knoviq-auth-service:<tag>
 ghcr.io/<owner>/knoviq-ai-gateway:<tag>
