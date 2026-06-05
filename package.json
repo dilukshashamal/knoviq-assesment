@@ -8,8 +8,8 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "build": "corepack pnpm -r --if-present build",
-    "clean": "corepack pnpm -r --if-present clean",
+    "build": "tsc -b tsconfig.json && corepack pnpm --filter @knoviq/web --if-present build",
+    "clean": "tsc -b --clean tsconfig.json && corepack pnpm --filter @knoviq/web --if-present clean",
     "dev": "corepack pnpm -r --parallel --if-present dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
