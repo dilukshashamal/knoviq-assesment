@@ -25,7 +25,7 @@ Knoviq is a production-ready, multi-tenant AI knowledge assistant. Users upload 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Browser / Client                          │
-│                    Next.js 15  (port 3000)                       │
+│                    Next.js 15  (port 3000)                      │
 └────────────────┬──────────────────────────────┬─────────────────┘
                  │  /api/auth/*                  │  /api/chat
                  │  /api/documents               │
