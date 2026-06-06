@@ -82,7 +82,7 @@ export function StartWorkspace(props: {
       ) : null}
 
       {/* Feature tiles — shown when no docs yet */}
-      {(!props.accessToken || docCount === 0) ? (
+      {!props.accessToken || docCount === 0 ? (
         <div className="mt-8 grid w-full max-w-2xl grid-cols-2 gap-3">
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <Card key={title} className="border-border/60 bg-surface text-left shadow-none">

@@ -18,14 +18,11 @@ export async function DELETE(
 ): Promise<Response> {
   const { conversationId } = await context.params;
   try {
-    const response = await fetch(
-      `${backendUrls.aiGateway}/conversations/${conversationId}`,
-      {
-        headers: bearerHeaders(request),
-        method: "DELETE",
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
+    const response = await fetch(`${backendUrls.aiGateway}/conversations/${conversationId}`, {
+      headers: bearerHeaders(request),
+      method: "DELETE",
+      signal: AbortSignal.timeout(10_000),
+    });
     return forwardJsonResponse(response);
   } catch (error) {
     return backendUnavailable("AI Gateway", error);

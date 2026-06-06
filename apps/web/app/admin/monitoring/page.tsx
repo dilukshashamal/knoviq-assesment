@@ -532,10 +532,7 @@ function QualityReviewPanel(props: {
               const confidenceLabel = formatConfidence(incident.validationConfidence);
 
               return (
-                <div
-                  className={isSelected ? "review-row active" : "review-row"}
-                  key={incident.id}
-                >
+                <div className={isSelected ? "review-row active" : "review-row"} key={incident.id}>
                   <button
                     className="review-row-main"
                     onClick={() => props.onSelect(incident.id)}
@@ -912,7 +909,10 @@ function getIncidentDisplayStatus(incident: QualityIncident): string {
 }
 
 function normalizeValidationStatus(value: string): string {
-  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_").trim();
+  const normalized = value
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .trim();
 
   if (
     normalized === "partially_supported" ||

@@ -378,7 +378,10 @@ export default function HomePage() {
       const msg = getErrorMessage(error);
       // If both tokens are expired, clear the session so the user sees the login form
       // instead of a confusing error message.
-      if (msg.toLowerCase().includes("session expired") || msg.toLowerCase().includes("sign in again")) {
+      if (
+        msg.toLowerCase().includes("session expired") ||
+        msg.toLowerCase().includes("sign in again")
+      ) {
         const fresh = createThread();
         setThreadState({ activeThreadId: fresh.id, threads: [fresh] });
         setSession(null);
@@ -446,7 +449,9 @@ export default function HomePage() {
     }
     try {
       const parsed = JSON.parse(stored) as { activeThreadId: string; threads: ChatThread[] };
-      const threads = parsed.threads.map(sanitizeThread).filter((thread) => thread.messages.length > 0);
+      const threads = parsed.threads
+        .map(sanitizeThread)
+        .filter((thread) => thread.messages.length > 0);
       setThreadState(
         threads.length > 0
           ? {
@@ -498,14 +503,16 @@ export default function HomePage() {
               ? t
               : {
                   ...t,
-                  messages: data.messages.map((m) => ({
-                    content: m.content,
-                    createdAt: m.createdAt,
-                    id: m.id,
-                    role: m.role,
-                    ...(m.toolCalls ? { toolCalls: m.toolCalls } : {}),
-                    ...(m.validation ? { validation: m.validation } : {}),
-                  })).filter(isVisibleChatMessage) as ChatMessage[],
+                  messages: data.messages
+                    .map((m) => ({
+                      content: m.content,
+                      createdAt: m.createdAt,
+                      id: m.id,
+                      role: m.role,
+                      ...(m.toolCalls ? { toolCalls: m.toolCalls } : {}),
+                      ...(m.validation ? { validation: m.validation } : {}),
+                    }))
+                    .filter(isVisibleChatMessage) as ChatMessage[],
                 },
           ),
         }));
@@ -896,8 +903,13 @@ export default function HomePage() {
               <MessageBubble
                 key={message.id}
                 message={message}
-                isInspected={inspectedMessageId === message.id || (inspectedMessageId === null && message === inspectedMessage)}
-                onInspect={message.role === "assistant" ? () => setInspectedMessageId(message.id) : undefined}
+                isInspected={
+                  inspectedMessageId === message.id ||
+                  (inspectedMessageId === null && message === inspectedMessage)
+                }
+                onInspect={
+                  message.role === "assistant" ? () => setInspectedMessageId(message.id) : undefined
+                }
               />
             ))
           ) : (

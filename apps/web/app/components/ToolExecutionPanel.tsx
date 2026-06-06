@@ -165,9 +165,7 @@ function SqlOutput({ output }: { output: unknown }) {
         </tbody>
       </table>
       {rows.length > 10 ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Showing 10 of {rows.length} rows
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">Showing 10 of {rows.length} rows</p>
       ) : null}
     </div>
   );
@@ -179,9 +177,7 @@ function CalcOutput({ toolCall }: { toolCall: ToolCall }) {
 
   return (
     <div className="tool-calc-result">
-      {expression ? (
-        <span className="tool-calc-expression">{expression} =</span>
-      ) : null}
+      {expression ? <span className="tool-calc-expression">{expression} =</span> : null}
       <strong>{result ?? "—"}</strong>
     </div>
   );
@@ -359,11 +355,7 @@ export function ToolExecutionPanel({ toolCalls }: { toolCalls: ToolCall[] }) {
     <div className="tool-execution-panel">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="tool-execution-header w-full"
-            aria-expanded={open}
-          >
+          <button type="button" className="tool-execution-header w-full" aria-expanded={open}>
             <FileSearch className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs font-semibold text-muted-foreground">
               {open ? "Hide" : "Show"} reasoning steps
@@ -410,16 +402,10 @@ function parseRetrievalResults(output: unknown) {
     return [
       {
         chunkId: typeof r.chunkId === "string" ? r.chunkId : String(Math.random()),
-        documentTitle:
-          typeof r.documentTitle === "string" ? r.documentTitle : "Uploaded document",
+        documentTitle: typeof r.documentTitle === "string" ? r.documentTitle : "Uploaded document",
         pageLabel:
-          typeof r.sourcePageStart === "number"
-            ? `Page ${r.sourcePageStart}`
-            : "Matched section",
-        excerpt:
-          typeof r.chunkContent === "string"
-            ? truncateText(r.chunkContent, 240)
-            : undefined,
+          typeof r.sourcePageStart === "number" ? `Page ${r.sourcePageStart}` : "Matched section",
+        excerpt: typeof r.chunkContent === "string" ? truncateText(r.chunkContent, 240) : undefined,
       },
     ];
   });

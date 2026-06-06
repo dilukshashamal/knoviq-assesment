@@ -325,9 +325,7 @@ function InspectorTab({ message }: { message: ChatMessage | null }) {
       <ScrollArea className="inspector-scroll">
         <div className="inspector-content-area">
           {/* Confidence section */}
-          {displayValidation ? (
-            <ConfidenceSection validation={displayValidation} />
-          ) : null}
+          {displayValidation ? <ConfidenceSection validation={displayValidation} /> : null}
 
           {/* Tool execution trace */}
           {(message.toolCalls?.length ?? 0) > 0 ? (
@@ -417,14 +415,7 @@ function ConfidenceRing({ pct }: { pct: number }) {
       role="img"
     >
       {/* Track */}
-      <circle
-        cx="48"
-        cy="48"
-        r={r}
-        fill="none"
-        stroke="var(--muted)"
-        strokeWidth="8"
-      />
+      <circle cx="48" cy="48" r={r} fill="none" stroke="var(--muted)" strokeWidth="8" />
       {/* Arc */}
       <circle
         cx="48"
@@ -554,9 +545,7 @@ const TOOL_META: Record<
 function getToolMeta(name: string) {
   return (
     TOOL_META[name] ?? {
-      label: name
-        .replace(/[._-]+/g, " ")
-        .replace(/\b\w/g, (l) => l.toUpperCase()),
+      label: name.replace(/[._-]+/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
       desc: `Tool: ${name}`,
       icon: Zap,
     }
@@ -813,9 +802,7 @@ function SqlOutput({ output }: { output: unknown }) {
           </tbody>
         </table>
         {rows.length > 8 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Showing 8 of {rows.length} rows
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Showing 8 of {rows.length} rows</p>
         ) : null}
       </div>
     </div>
@@ -888,12 +875,10 @@ function parseRetrievalResults(output: unknown) {
     return [
       {
         chunkId: typeof r.chunkId === "string" ? r.chunkId : String(Math.random()),
-        documentTitle:
-          typeof r.documentTitle === "string" ? r.documentTitle : "Uploaded document",
+        documentTitle: typeof r.documentTitle === "string" ? r.documentTitle : "Uploaded document",
         pageLabel:
           typeof r.sourcePageStart === "number" ? `Page ${r.sourcePageStart}` : "Matched section",
-        excerpt:
-          typeof r.chunkContent === "string" ? truncateText(r.chunkContent, 200) : undefined,
+        excerpt: typeof r.chunkContent === "string" ? truncateText(r.chunkContent, 200) : undefined,
       },
     ];
   });

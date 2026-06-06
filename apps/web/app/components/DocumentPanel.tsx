@@ -172,8 +172,7 @@ export function UploadForm(props: {
   variant: "compact" | "hero";
 }) {
   const isError =
-    props.uploadStatus !== null &&
-    !props.uploadStatus.toLowerCase().startsWith("uploaded");
+    props.uploadStatus !== null && !props.uploadStatus.toLowerCase().startsWith("uploaded");
 
   return (
     <form

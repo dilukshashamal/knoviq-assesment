@@ -33,13 +33,10 @@ export function MessageBubble({
   const displayValidation = message.validation
     ? getDisplayValidation(message.validation, sources.length)
     : undefined;
-  const hasTrace =
-    (message.toolCalls?.length ?? 0) > 0 || message.validation !== undefined;
+  const hasTrace = (message.toolCalls?.length ?? 0) > 0 || message.validation !== undefined;
 
   return (
-    <article
-      className={message.role === "user" ? "message-row user" : "message-row assistant"}
-    >
+    <article className={message.role === "user" ? "message-row user" : "message-row assistant"}>
       <div className="message-avatar">
         {message.role === "user" ? "You" : <Sparkles className="h-4 w-4" />}
       </div>

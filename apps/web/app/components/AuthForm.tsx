@@ -26,8 +26,7 @@ export interface AuthFormProps {
 
 export function AuthForm(props: AuthFormProps) {
   const isError =
-    props.authStatus !== null &&
-    !props.authStatus.toLowerCase().startsWith("signed in");
+    props.authStatus !== null && !props.authStatus.toLowerCase().startsWith("signed in");
 
   return (
     <form className="auth-form" onSubmit={props.onSubmit} noValidate>
@@ -87,9 +86,7 @@ export function AuthForm(props: AuthFormProps) {
           value={props.password}
           className="h-9"
         />
-        {props.mode === "register" ? (
-          <p className="field-hint">Minimum 12 characters</p>
-        ) : null}
+        {props.mode === "register" ? <p className="field-hint">Minimum 12 characters</p> : null}
       </div>
 
       {/* Register-only fields */}
@@ -129,11 +126,7 @@ export function AuthForm(props: AuthFormProps) {
         </>
       ) : null}
 
-      <Button
-        className="w-full"
-        disabled={props.authLoading}
-        type="submit"
-      >
+      <Button className="w-full" disabled={props.authLoading} type="submit">
         {props.authLoading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : props.mode === "register" ? (
