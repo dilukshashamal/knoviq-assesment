@@ -27,6 +27,23 @@ frontend — all in one monorepo.
 
 ![Knoviq architecture diagram](images/diagram.png)
 
+### Product Screenshots
+
+The web workspace combines document chat, grounded-answer confidence, citations, and the tool
+execution trace in a single operator view.
+
+![Knoviq chat workspace with AI inspector](images/page1.png)
+
+Admins can monitor service readiness, answer quality, usage, cost, and background job health from
+the workspace health console.
+
+![Knoviq workspace health dashboard](images/page2.png)
+
+The answer review inbox surfaces low-confidence or unsupported answers with the retrieved evidence,
+validator outcome, original draft, and reviewer actions.
+
+![Knoviq answer review inbox](images/page3.png)
+
 ### Service Map
 
 ```
