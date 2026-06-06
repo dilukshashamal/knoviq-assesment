@@ -223,7 +223,6 @@ export default function HomePage() {
       restoreThreads(stored.user.userId);
     }
     setStorageReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist threads to localStorage whenever they change

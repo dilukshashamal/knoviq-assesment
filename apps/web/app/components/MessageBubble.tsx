@@ -12,7 +12,6 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatMessage, ChatResponse, SourceReference, ToolCall } from "../types";
 import { extractSources, formatTime, getDisplayValidation, parseInvoiceOutput } from "../ui-utils";

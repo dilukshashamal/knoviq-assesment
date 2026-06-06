@@ -95,6 +95,7 @@ export default function MonitoringPage() {
     }
 
     void refresh(storedSession.tokens.accessToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
