@@ -189,7 +189,7 @@ export function buildMonitorSummary(data: ObservabilityResponse | null) {
       trace,
       userLabel: asString(row.user_name) || asString(row.user_email) || "User",
       userQuestion: asString(row.user_question),
-      validationConfidence: asNumber(row.validation_confidence),
+      validationConfidence: resolveQualityIncidentConfidence(row, trace),
     };
   });
   const qualityTrend = buildQualityTrend(qualityTrendRowsRaw);
@@ -348,6 +348,34 @@ function asQualityTrace(value: unknown): QualityIncident["trace"] {
     })),
     validation: asRecord(record.validation),
   };
+}
+
+function resolveQualityIncidentConfidence(
+  row: Record<string, unknown>,
+  trace: QualityIncident["trace"],
+): number {
+  const fromRow = asNumber(row.validation_confidence);
+  if (fromRow > 0) {
+    return fromRow;
+  }
+
+  const fromTrace = asNumber(trace.validation.confidence);
+  if (fromTrace > 0) {
+    return fromTrace;
+  }
+
+  const status = asString(row.validation_status);
+  const retrievalResultCount = asNumber(row.retrieval_result_count);
+
+  if (status === "partially_grounded" || (status === "unsupported" && retrievalResultCount > 0)) {
+    return 0.7;
+  }
+
+  if (status === "unsupported") {
+    return 0.35;
+  }
+
+  return 0;
 }
 
 function asOptionalError(value: unknown): QualityTraceToolCall["error"] | undefined {

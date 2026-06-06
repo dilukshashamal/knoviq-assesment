@@ -50,20 +50,57 @@ export class AgentRunner {
     return this.repository.listConversations(input);
   }
 
+  async deleteConversation(input: {
+    conversationId: string;
+    tenantId: string;
+    userId: string;
+  }): Promise<void> {
+    await this.repository.deleteConversation(input);
+  }
+
   async getConversationMessages(input: {
     conversationId: string;
     tenantId: string;
     userId: string;
   }): Promise<{
-    messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
+    messages: Array<{
+      id: string;
+      role: "user" | "assistant";
+      content: string;
+      createdAt: string;
+      toolCalls?: ExecutedToolCall[];
+      validation?: AnswerValidation;
+    }>;
   }> {
     await this.repository.assertConversationAccess(input);
     const messages = await this.repository.getRecentMessages({
       conversationId: input.conversationId,
       limit: 100,
       tenantId: input.tenantId,
+      visibleOnly: true,
     });
-    return { messages };
+    return {
+      messages: messages.flatMap((message) => {
+        if (message.role !== "user" && message.role !== "assistant") {
+          return [];
+        }
+
+        return [
+          {
+            content: message.content,
+            createdAt: message.createdAt,
+            id: message.id,
+            role: message.role,
+            ...(isExecutedToolCallArray(message.metadata.toolCalls)
+              ? { toolCalls: message.metadata.toolCalls }
+              : {}),
+            ...(isAnswerValidation(message.metadata.validation)
+              ? { validation: message.metadata.validation }
+              : {}),
+          },
+        ];
+      }),
+    };
   }
 
   async run(input: RunAgentInput): Promise<AgentRunResult> {
@@ -594,6 +631,38 @@ export class AgentRunner {
       topic: "agent-runs",
     });
   }
+}
+
+function isExecutedToolCallArray(value: unknown): value is ExecutedToolCall[] {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  return value.every(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as { reason?: unknown }).reason === "string" &&
+      typeof (item as { status?: unknown }).status === "string" &&
+      typeof (item as { toolName?: unknown }).toolName === "string",
+  );
+}
+
+function isAnswerValidation(value: unknown): value is AnswerValidation {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<AnswerValidation>;
+  return (
+    typeof candidate.confidence === "number" &&
+    Array.isArray(candidate.issues) &&
+    Array.isArray(candidate.requiredCaveats) &&
+    (candidate.status === "grounded" ||
+      candidate.status === "partially_grounded" ||
+      candidate.status === "unsupported") &&
+    Array.isArray(candidate.supportedToolNames)
+  );
 }
 
 function applyValidationGuardrail(

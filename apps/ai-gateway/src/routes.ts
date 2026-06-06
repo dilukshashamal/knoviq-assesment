@@ -118,6 +118,21 @@ export function registerChatRoutes(
     },
   );
 
+  app.delete(
+    "/conversations/:conversationId",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = requirePrincipal(request);
+      const { conversationId } = request.params as { conversationId: string };
+      await agentRunner.deleteConversation({
+        conversationId,
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+      });
+      return reply.status(204).send();
+    },
+  );
+
   app.route({
     handler: async (_request, reply) =>
       reply.code(426).send({

@@ -131,13 +131,7 @@ export class SafeSqlTool implements ToolHandler<SafeSqlArguments> {
               ($4::text IS NULL AND m.metadata->'validation'->>'status' <> 'grounded')
               OR ($4::text IS NOT NULL AND m.metadata->'validation'->>'status' = $4)
             )
-          ORDER BY
-            CASE m.metadata->'validation'->>'status'
-              WHEN 'unsupported' THEN 0
-              WHEN 'partially_grounded' THEN 1
-              ELSE 2
-            END,
-            m.created_at DESC
+          ORDER BY m.created_at DESC
           LIMIT $5
         )
         SELECT

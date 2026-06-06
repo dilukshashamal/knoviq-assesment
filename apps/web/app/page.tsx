@@ -1,21 +1,30 @@
 "use client";
 
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { MessageSquarePlus, Send, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 
 import {
   type AuthResponse,
+  deletedConversationStorageKey,
   isAdminRole,
   readStoredSession,
   SESSION_STORAGE_KEY,
   threadStorageKey,
 } from "@/lib/session";
 
-import type { ApiErrorBody, ChatResponse, ChatThread, DocumentSummary } from "./types";
+import type { ApiErrorBody, ChatMessage, ChatResponse, ChatThread, DocumentSummary } from "./types";
 import { extractApiMessage, formatSourceCount, getErrorMessage, isChatResponse } from "./ui-utils";
 import { AuthForm } from "./components/AuthForm";
-import { DocumentPanel } from "./components/DocumentPanel";
 import { MessageBubble, TypingIndicator } from "./components/MessageBubble";
+import { RightDrawer } from "./components/RightDrawer";
 import { StartWorkspace } from "./components/StartWorkspace";
 
 // ── Thread helpers ─────────────────────────────────────────────────────────────
@@ -35,6 +44,55 @@ function titleFromMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim().slice(0, 52) || "Document chat";
 }
 
+function readDeletedConversationIds(userId: string): Set<string> {
+  const stored = window.localStorage.getItem(deletedConversationStorageKey(userId));
+  if (!stored) return new Set();
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    window.localStorage.removeItem(deletedConversationStorageKey(userId));
+    return new Set();
+  }
+}
+
+function rememberDeletedConversationId(userId: string, conversationId: string): void {
+  const deletedIds = readDeletedConversationIds(userId);
+  deletedIds.add(conversationId);
+  window.localStorage.setItem(
+    deletedConversationStorageKey(userId),
+    JSON.stringify([...deletedIds]),
+  );
+}
+
+function isVisibleChatMessage(message: ChatMessage): boolean {
+  if (message.role !== "user" && message.role !== "assistant") {
+    return false;
+  }
+
+  if (message.role === "assistant" && looksLikeToolPayload(message.content)) {
+    return false;
+  }
+
+  return true;
+}
+
+function looksLikeToolPayload(content: string): boolean {
+  const trimmed = content.trim();
+  return (
+    (trimmed.startsWith("[{") || trimmed.startsWith("{")) &&
+    trimmed.includes('"toolName"') &&
+    trimmed.includes('"arguments"')
+  );
+}
+
+function sanitizeThread(thread: ChatThread): ChatThread {
+  return {
+    ...thread,
+    messages: thread.messages.filter(isVisibleChatMessage),
+  };
+}
+
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -43,6 +101,59 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   const data = text ? (JSON.parse(text) as unknown) : undefined;
   if (!response.ok) throw new Error(extractApiMessage(data, response.status));
   return data as T;
+}
+
+// ── Token refresh helper ──────────────────────────────────────────────────────
+
+async function tryRefreshToken(session: AuthResponse): Promise<AuthResponse | null> {
+  try {
+    const refreshed = await requestJson<AuthResponse>("/api/auth/refresh", {
+      body: JSON.stringify({ refreshToken: session.tokens.refreshToken }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(refreshed));
+    return refreshed;
+  } catch {
+    return null;
+  }
+}
+
+// ── Authenticated fetch with automatic token refresh on 401 ──────────────────
+//
+// Returns { data, newSession } where newSession is non-null only when a token
+// refresh occurred and callers should update their session state.
+// Throws if the request fails after a retry, or if the user is not signed in.
+
+async function fetchWithAuth<T>(
+  url: string,
+  init: RequestInit,
+  session: AuthResponse | null,
+): Promise<{ data: T; newSession: AuthResponse | null }> {
+  const response = await fetch(url, init);
+
+  if (response.status !== 401 || !session) {
+    const text = await response.text();
+    const data = text ? (JSON.parse(text) as unknown) : undefined;
+    if (!response.ok) throw new Error(extractApiMessage(data, response.status));
+    return { data: data as T, newSession: null };
+  }
+
+  // 401 — try a silent token refresh then retry once
+  const refreshed = await tryRefreshToken(session);
+  if (!refreshed) {
+    throw new Error("Session expired. Please sign in again.");
+  }
+
+  const retryHeaders = {
+    ...(init.headers as Record<string, string>),
+    authorization: `Bearer ${refreshed.tokens.accessToken}`,
+  };
+  const retryResponse = await fetch(url, { ...init, headers: retryHeaders });
+  const retryText = await retryResponse.text();
+  const retryData = retryText ? (JSON.parse(retryText) as unknown) : undefined;
+  if (!retryResponse.ok) throw new Error(extractApiMessage(retryData, retryResponse.status));
+  return { data: retryData as T, newSession: refreshed };
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -74,7 +185,11 @@ export default function HomePage() {
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
+  // Inspector: id of the assistant message shown in the right-panel AI Inspector tab
+  const [inspectedMessageId, setInspectedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const accessToken = session?.tokens.accessToken;
   const activeThread = useMemo(
@@ -83,6 +198,21 @@ export default function HomePage() {
       threadState.threads[0],
     [threadState.activeThreadId, threadState.threads],
   );
+
+  // The message currently shown in the AI Inspector panel.
+  // Defaults to the latest assistant message in the active thread.
+  const inspectedMessage = useMemo<ChatMessage | null>(() => {
+    if (!activeThread) return null;
+    const msgs = activeThread.messages;
+    // If user has explicitly clicked a message, use that
+    if (inspectedMessageId) {
+      const found = msgs.find((m) => m.id === inspectedMessageId && m.role === "assistant");
+      if (found) return found;
+    }
+    // Otherwise auto-select the latest assistant message that has data
+    const latest = [...msgs].reverse().find((m) => m.role === "assistant" && m.content !== "");
+    return latest ?? null;
+  }, [activeThread, inspectedMessageId]);
 
   // Restore session + threads from localStorage on mount
   useEffect(() => {
@@ -93,6 +223,7 @@ export default function HomePage() {
       restoreThreads(stored.user.userId);
     }
     setStorageReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist threads to localStorage whenever they change
@@ -108,6 +239,7 @@ export default function HomePage() {
   // Refresh documents whenever the access token changes (login / page load)
   useEffect(() => {
     if (accessToken) void refreshDocuments(accessToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
   // Auto-scroll to the latest message
@@ -115,9 +247,17 @@ export default function HomePage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeThread?.messages.length, chatLoading]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
+  }, [chatInput]);
+
   // ── Auth ────────────────────────────────────────────────────────────────────
 
-  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+  async function handleAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthLoading(true);
     setAuthStatus(null);
@@ -131,7 +271,6 @@ export default function HomePage() {
       });
       setSession(response);
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(response));
-      // Attempt to restore server-side conversation history; fall back to localStorage.
       await restoreConversationHistory(response.tokens.accessToken, response.user.userId);
       setAuthStatus(`Signed in to ${response.user.tenantName}`);
     } catch (error) {
@@ -142,6 +281,11 @@ export default function HomePage() {
   }
 
   function handleSignOut() {
+    // Clear the persisted thread history for this user before wiping the session,
+    // otherwise stale threads survive in localStorage and reappear on next login.
+    if (session?.user.userId) {
+      window.localStorage.removeItem(threadStorageKey(session.user.userId));
+    }
     const fresh = createThread();
     setThreadState({ activeThreadId: fresh.id, threads: [fresh] });
     setSession(null);
@@ -151,7 +295,7 @@ export default function HomePage() {
 
   // ── Documents ───────────────────────────────────────────────────────────────
 
-  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+  async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || !selectedFile) {
       setUploadStatus(!accessToken ? "Sign in before uploading." : "Choose a file first.");
@@ -165,15 +309,20 @@ export default function HomePage() {
       formData.append("visibility", "tenant");
       formData.append("metadata", JSON.stringify({ source: "web-ui" }));
       formData.append("file", selectedFile);
-      await requestJson<unknown>("/api/documents", {
-        body: formData,
-        headers: { authorization: `Bearer ${accessToken}` },
-        method: "POST",
-      });
+      const { newSession } = await fetchWithAuth<unknown>(
+        "/api/documents",
+        {
+          body: formData,
+          headers: { authorization: `Bearer ${accessToken}` },
+          method: "POST",
+        },
+        session,
+      );
+      if (newSession) setSession(newSession);
       setUploadStatus(`Uploaded ${selectedFile.name}`);
       setDocumentTitle("");
       setSelectedFile(null);
-      await refreshDocuments(accessToken);
+      await refreshDocuments(newSession?.tokens.accessToken ?? accessToken);
     } catch (error) {
       setUploadStatus(getErrorMessage(error));
     } finally {
@@ -190,12 +339,17 @@ export default function HomePage() {
     setDocumentsLoading(true);
     setUploadStatus(null);
     try {
-      await requestJson<void>(`/api/documents/${document.documentId}`, {
-        headers: { authorization: `Bearer ${accessToken}` },
-        method: "DELETE",
-      });
+      const { newSession } = await fetchWithAuth<void>(
+        `/api/documents/${document.documentId}`,
+        {
+          headers: { authorization: `Bearer ${accessToken}` },
+          method: "DELETE",
+        },
+        session,
+      );
+      if (newSession) setSession(newSession);
       setUploadStatus(`Deleted ${document.title}`);
-      await refreshDocuments(accessToken);
+      await refreshDocuments(newSession?.tokens.accessToken ?? accessToken);
     } catch (error) {
       setUploadStatus(getErrorMessage(error));
     } finally {
@@ -213,12 +367,27 @@ export default function HomePage() {
     if (!token) return;
     setDocumentsLoading(true);
     try {
-      const result = await requestJson<{ documents: DocumentSummary[] }>("/api/documents", {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      setDocuments(result.documents);
+      const { data, newSession } = await fetchWithAuth<{ documents: DocumentSummary[] }>(
+        "/api/documents",
+        { headers: { authorization: `Bearer ${token}` } },
+        session,
+      );
+      if (newSession) setSession(newSession);
+      setDocuments(data.documents);
     } catch (error) {
-      setUploadStatus(getErrorMessage(error));
+      const msg = getErrorMessage(error);
+      // If both tokens are expired, clear the session so the user sees the login form
+      // instead of a confusing error message.
+      if (msg.toLowerCase().includes("session expired") || msg.toLowerCase().includes("sign in again")) {
+        const fresh = createThread();
+        setThreadState({ activeThreadId: fresh.id, threads: [fresh] });
+        setSession(null);
+        setDocuments([]);
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        setAuthStatus("Your session expired. Please sign in again.");
+      }
+      // Other errors (network down, etc.) can be silently ignored for document loading —
+      // the documents panel will just stay empty and show "No documents yet."
     } finally {
       setDocumentsLoading(false);
     }
@@ -226,12 +395,6 @@ export default function HomePage() {
 
   // ── Conversation history ────────────────────────────────────────────────────
 
-  /**
-   * On login, load the user's conversation list from the backend.
-   * This exposes server-side history so users see previous conversations
-   * across devices, not just what's in the current browser's localStorage.
-   * Falls back to localStorage-only threads if the API is unavailable.
-   */
   async function restoreConversationHistory(token: string, userId: string) {
     try {
       const result = await requestJson<{
@@ -245,14 +408,16 @@ export default function HomePage() {
         headers: { authorization: `Bearer ${token}` },
       });
 
-      if (result.conversations.length === 0) {
-        restoreThreads(userId);
+      const deletedIds = readDeletedConversationIds(userId);
+      const visibleConversations = result.conversations.filter((conv) => !deletedIds.has(conv.id));
+
+      if (visibleConversations.length === 0) {
+        const fresh = createThread();
+        setThreadState({ activeThreadId: fresh.id, threads: [fresh] });
         return;
       }
 
-      // Build thread stubs from backend conversation list.
-      // Messages are loaded lazily when the user clicks a conversation.
-      const backendThreads: ChatThread[] = result.conversations.map((conv) => ({
+      const backendThreads: ChatThread[] = visibleConversations.map((conv) => ({
         conversationId: conv.id,
         createdAt: conv.createdAt,
         id: conv.id,
@@ -267,7 +432,6 @@ export default function HomePage() {
         threads: [fresh, ...backendThreads],
       });
     } catch {
-      // Backend unavailable — fall back to localStorage threads
       restoreThreads(userId);
     }
   }
@@ -282,12 +446,78 @@ export default function HomePage() {
     }
     try {
       const parsed = JSON.parse(stored) as { activeThreadId: string; threads: ChatThread[] };
-      setThreadState(parsed.threads.length > 0 ? parsed : defaultState);
+      const threads = parsed.threads.map(sanitizeThread).filter((thread) => thread.messages.length > 0);
+      setThreadState(
+        threads.length > 0
+          ? {
+              activeThreadId: threads.some((thread) => thread.id === parsed.activeThreadId)
+                ? parsed.activeThreadId
+                : (threads[0]?.id ?? fresh.id),
+              threads,
+            }
+          : defaultState,
+      );
     } catch {
       window.localStorage.removeItem(threadStorageKey(userId));
       setThreadState(defaultState);
     }
   }
+
+  // ── Lazy-load conversation messages from backend ───────────────────────────
+
+  const handleSelectThread = useCallback(
+    async (threadId: string) => {
+      setThreadState((c) => ({ ...c, activeThreadId: threadId }));
+      const thread = threadState.threads.find((t) => t.id === threadId);
+
+      // Only fetch if this is a backend-persisted conversation with no messages yet
+      if (!thread?.conversationId || thread.messages.length > 0 || !accessToken) return;
+
+      setLoadingConversationId(thread.conversationId);
+      try {
+        const { data, newSession } = await fetchWithAuth<{
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            content: string;
+            createdAt: string;
+            toolCalls?: ChatMessage["toolCalls"];
+            validation?: ChatMessage["validation"];
+          }>;
+        }>(
+          `/api/conversations/${thread.conversationId}/messages`,
+          { headers: { authorization: `Bearer ${accessToken}` } },
+          session,
+        );
+        if (newSession) setSession(newSession);
+
+        setThreadState((current) => ({
+          ...current,
+          threads: current.threads.map((t) =>
+            t.id !== threadId
+              ? t
+              : {
+                  ...t,
+                  messages: data.messages.map((m) => ({
+                    content: m.content,
+                    createdAt: m.createdAt,
+                    id: m.id,
+                    role: m.role,
+                    ...(m.toolCalls ? { toolCalls: m.toolCalls } : {}),
+                    ...(m.validation ? { validation: m.validation } : {}),
+                  })).filter(isVisibleChatMessage) as ChatMessage[],
+                },
+          ),
+        }));
+      } catch {
+        // Silently ignore — thread will just stay empty
+      } finally {
+        setLoadingConversationId(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [accessToken, threadState.threads],
+  );
 
   // ── Thread management ────────────────────────────────────────────────────────
 
@@ -299,9 +529,12 @@ export default function HomePage() {
     }));
     setChatInput("");
     setChatStatus(null);
+    setTimeout(() => textareaRef.current?.focus(), 50);
   }
 
   function handleDeleteThread(threadId: string) {
+    const thread = threadState.threads.find((t) => t.id === threadId);
+
     setThreadState((current) => {
       const remaining = current.threads.filter((t) => t.id !== threadId);
       if (remaining.length === 0) {
@@ -312,6 +545,36 @@ export default function HomePage() {
         current.activeThreadId === threadId ? (remaining[0]?.id ?? "") : current.activeThreadId;
       return { activeThreadId: nextId, threads: remaining };
     });
+
+    if (thread?.conversationId && accessToken) {
+      if (session?.user.userId) {
+        rememberDeletedConversationId(session.user.userId, thread.conversationId);
+      }
+
+      // Also delete from the backend. Keeping the local tombstone above makes
+      // the UI resilient if this request fails or the dev server is stale.
+      void deleteConversationFromBackend(thread.conversationId, accessToken);
+    }
+  }
+
+  async function deleteConversationFromBackend(
+    conversationId: string,
+    token: string,
+  ): Promise<void> {
+    try {
+      const { newSession } = await fetchWithAuth<void>(
+        `/api/conversations/${conversationId}`,
+        { headers: { authorization: `Bearer ${token}` }, method: "DELETE" },
+        session,
+      );
+      if (newSession) setSession(newSession);
+    } catch (error) {
+      // The thread is already removed from the UI, but the backend delete failed.
+      // Warn the user so they know the conversation may reappear on next login.
+      setChatStatus(
+        `Could not delete conversation from server: ${getErrorMessage(error)}. It may reappear after you sign in again.`,
+      );
+    }
   }
 
   function upsertThread(next: ChatThread | ((current: ChatThread) => ChatThread)) {
@@ -326,9 +589,20 @@ export default function HomePage() {
     });
   }
 
+  // ── Keyboard shortcut: Shift+Enter = newline, Enter alone = submit ───────────
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!chatLoading && chatInput.trim()) {
+        void handleChat(event as unknown as React.FormEvent<HTMLFormElement>);
+      }
+    }
+  }
+
   // ── Chat ──────────────────────────────────────────────────────────────────────
 
-  async function handleChat(event: FormEvent<HTMLFormElement>) {
+  async function handleChat(event: React.FormEvent<HTMLFormElement> | React.FormEvent) {
     event.preventDefault();
     if (!accessToken) {
       setChatStatus("Sign in before asking the assistant.");
@@ -341,7 +615,6 @@ export default function HomePage() {
     const now = new Date().toISOString();
     const assistantId = crypto.randomUUID();
 
-    // Add user message + empty assistant placeholder atomically
     setThreadState((current) => {
       const existing =
         current.threads.find((t) => t.id === current.activeThreadId) ??
@@ -369,6 +642,8 @@ export default function HomePage() {
     setChatStatus(null);
 
     let timeoutId: number | undefined;
+    let currentToken = accessToken;
+
     try {
       const body = JSON.stringify({
         ...(threadBeforeRun.conversationId
@@ -380,12 +655,30 @@ export default function HomePage() {
       const controller = new AbortController();
       timeoutId = window.setTimeout(() => controller.abort(), 120_000);
 
-      const response = await fetch("/api/chat/stream", {
+      let response = await fetch("/api/chat/stream", {
         body,
-        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${currentToken}`, "content-type": "application/json" },
         method: "POST",
         signal: controller.signal,
       });
+
+      // ── Auto-refresh token on 401 ────────────────────────────────────────────
+      if (response.status === 401 && session) {
+        const refreshed = await tryRefreshToken(session);
+        if (refreshed) {
+          setSession(refreshed);
+          currentToken = refreshed.tokens.accessToken;
+          response = await fetch("/api/chat/stream", {
+            body,
+            headers: {
+              authorization: `Bearer ${currentToken}`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            signal: controller.signal,
+          });
+        }
+      }
 
       if (!response.ok) {
         let errorMsg = `Request failed (${response.status.toString()})`;
@@ -435,7 +728,6 @@ export default function HomePage() {
         }
         if (!isChatResponse(parsed)) return;
         finalResult = parsed;
-        // Patch placeholder + conversationId atomically
         setThreadState((current) => ({
           ...current,
           threads: current.threads.map((thread) =>
@@ -473,6 +765,8 @@ export default function HomePage() {
       }
       if (buffer.trim()) processSseBlock(buffer);
       if (!finalResult) throw new Error("No answer received from the assistant. Please retry.");
+      // Auto-select the completed response in the inspector panel
+      setInspectedMessageId(assistantId);
       setChatStatus("Answer ready.");
     } catch (error) {
       upsertThread((current) => ({
@@ -522,11 +816,17 @@ export default function HomePage() {
               >
                 <button
                   className="thread-select"
-                  onClick={() => setThreadState((c) => ({ ...c, activeThreadId: thread.id }))}
+                  onClick={() => void handleSelectThread(thread.id)}
                   type="button"
                 >
                   <MessageSquarePlus className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-left">{thread.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {loadingConversationId === thread.conversationId ? (
+                      <span className="italic text-muted-foreground">Loading…</span>
+                    ) : (
+                      thread.title
+                    )}
+                  </span>
                 </button>
                 <button
                   className="thread-delete"
@@ -567,7 +867,7 @@ export default function HomePage() {
               onFullNameChange={setFullName}
               onModeChange={setMode}
               onPasswordChange={setPassword}
-              onSubmit={handleAuth}
+              onSubmit={(e) => void handleAuth(e)}
               onTenantNameChange={setTenantName}
               password={password}
               tenantName={tenantName}
@@ -593,10 +893,22 @@ export default function HomePage() {
         <div className="message-scroll">
           {activeThread?.messages.length ? (
             activeThread.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isInspected={inspectedMessageId === message.id || (inspectedMessageId === null && message === inspectedMessage)}
+                onInspect={message.role === "assistant" ? () => setInspectedMessageId(message.id) : undefined}
+              />
             ))
           ) : (
-            <StartWorkspace accessToken={accessToken} documents={documents} />
+            <StartWorkspace
+              accessToken={accessToken}
+              documents={documents}
+              onSuggestion={(text) => {
+                setChatInput(text);
+                setTimeout(() => textareaRef.current?.focus(), 50);
+              }}
+            />
           )}
           {chatLoading &&
           !activeThread?.messages.some((m) => m.role === "assistant" && m.content === "") ? (
@@ -607,21 +919,28 @@ export default function HomePage() {
 
         <form className="composer" onSubmit={(e) => void handleChat(e)}>
           <textarea
+            ref={textareaRef}
             onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Ask about your documents..."
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about your documents… (Enter to send, Shift+Enter for newline)"
             rows={1}
             value={chatInput}
+            aria-label="Chat message"
           />
-          <button disabled={chatLoading || !chatInput.trim()} title="Send message" type="submit">
+          <button
+            disabled={chatLoading || !chatInput.trim()}
+            title="Send message (Enter)"
+            type="submit"
+          >
             <Send className="h-4 w-4" />
           </button>
         </form>
         {chatStatus ? <p className="composer-status">{chatStatus}</p> : null}
       </section>
 
-      {/* Right drawer — documents */}
+      {/* Right drawer — documents + AI Inspector */}
       <aside className="document-drawer">
-        <DocumentPanel
+        <RightDrawer
           accessToken={accessToken}
           documentTitle={documentTitle}
           documents={documents}
@@ -630,9 +949,10 @@ export default function HomePage() {
           onFileChange={handleFileChange}
           onRefresh={() => void refreshDocuments()}
           onTitleChange={setDocumentTitle}
-          onUpload={handleUpload}
+          onUpload={(e) => void handleUpload(e)}
           selectedFile={selectedFile}
           uploadStatus={uploadStatus}
+          activeMessage={inspectedMessage}
         />
       </aside>
     </main>

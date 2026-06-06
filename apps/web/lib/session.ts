@@ -23,6 +23,10 @@ export function threadStorageKey(userId: string): string {
   return `knoviq.chatThreads.${userId}`;
 }
 
+export function deletedConversationStorageKey(userId: string): string {
+  return `knoviq.deletedConversations.${userId}`;
+}
+
 export function isAdminRole(role: string | undefined): boolean {
   return role === "admin" || role === "owner";
 }

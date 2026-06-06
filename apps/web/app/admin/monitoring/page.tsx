@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
   TriangleAlert,
+  Trash2,
   WalletCards,
 } from "lucide-react";
 
@@ -71,11 +72,10 @@ export default function MonitoringPage() {
   );
   const selectedIncident = useMemo(
     () =>
-      monitor.qualityIncidents.find((incident) => incident.id === selectedIncidentId) ??
+      openQualityIncidents.find((incident) => incident.id === selectedIncidentId) ??
       openQualityIncidents[0] ??
-      monitor.qualityIncidents[0] ??
       null,
-    [monitor.qualityIncidents, openQualityIncidents, selectedIncidentId],
+    [openQualityIncidents, selectedIncidentId],
   );
 
   useEffect(() => {
@@ -279,10 +279,11 @@ export default function MonitoringPage() {
             <QualityPulsePanel monitor={monitor} />
 
             <QualityReviewPanel
-              incidents={monitor.qualityIncidents}
+              incidents={openQualityIncidents}
               openCount={openQualityIncidents.length}
               reviewDecisions={reviewDecisions}
               selectedIncident={selectedIncident}
+              onDelete={(incidentId) => markIncidentReview(incidentId, "resolved")}
               onDecision={markIncidentReview}
               onSelect={setSelectedIncidentId}
             />
@@ -490,6 +491,7 @@ function QualitySignal(props: { label: string; tone: "danger" | "ok" | "warning"
 
 function QualityReviewPanel(props: {
   incidents: QualityIncident[];
+  onDelete: (incidentId: string) => void;
   onDecision: (incidentId: string, decision: string) => void;
   onSelect: (incidentId: string) => void;
   openCount: number;
@@ -527,31 +529,49 @@ function QualityReviewPanel(props: {
             {props.incidents.map((incident) => {
               const decision = props.reviewDecisions[incident.id];
               const isSelected = props.selectedIncident?.id === incident.id;
+              const confidenceLabel = formatConfidence(incident.validationConfidence);
 
               return (
-                <button
+                <div
                   className={isSelected ? "review-row active" : "review-row"}
                   key={incident.id}
-                  onClick={() => props.onSelect(incident.id)}
-                  type="button"
                 >
-                  <span className={`review-status ${incident.status}`}>
-                    {formatValidationStatus(incident.status)}
-                  </span>
-                  <strong>
-                    {truncateText(
-                      incident.userQuestion || incident.conversationTitle || incident.answer,
-                      110,
-                    )}
-                  </strong>
-                  <small>
-                    {incident.userLabel} - {formatDateTime(incident.createdAt)} -{" "}
-                    {formatNumber(incident.retrievalResultCount)} sources -{" "}
-                    {decision
-                      ? formatReviewDecision(decision)
-                      : formatReviewPriority(incident.reviewPriority)}
-                  </small>
-                </button>
+                  <button
+                    className="review-row-main"
+                    onClick={() => props.onSelect(incident.id)}
+                    type="button"
+                  >
+                    <span className="review-badge-row">
+                      <span className={`review-status ${getIncidentDisplayStatus(incident)}`}>
+                        {formatIncidentStatus(incident)}
+                      </span>
+                      {confidenceLabel ? (
+                        <span className="review-confidence">{confidenceLabel} confidence</span>
+                      ) : null}
+                    </span>
+                    <strong>
+                      {truncateText(
+                        incident.userQuestion || incident.conversationTitle || incident.answer,
+                        110,
+                      )}
+                    </strong>
+                    <small>
+                      {incident.userLabel} - {formatDateTime(incident.createdAt)} -{" "}
+                      {formatNumber(incident.retrievalResultCount)} sources -{" "}
+                      {decision
+                        ? formatReviewDecision(decision)
+                        : formatReviewPriority(incident.reviewPriority)}
+                    </small>
+                  </button>
+                  <button
+                    className="review-delete"
+                    onClick={() => props.onDelete(incident.id)}
+                    title="Remove from review inbox"
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -590,9 +610,11 @@ function ReviewDetail(props: {
           <span className={`review-priority ${incident.reviewPriority}`}>
             {formatReviewPriority(incident.reviewPriority)}
           </span>
-          <h3>{formatValidationStatus(incident.status)}</h3>
+          <h3>{formatIncidentStatus(incident)}</h3>
         </div>
-        <span className="review-meta">{formatConfidence(incident.validationConfidence)}</span>
+        {formatConfidence(incident.validationConfidence) ? (
+          <span className="review-meta">{formatConfidence(incident.validationConfidence)}</span>
+        ) : null}
       </div>
 
       <div className="review-actions" aria-label="Review decision">
@@ -863,7 +885,7 @@ function formatStatus(value: string): string {
 }
 
 function formatValidationStatus(value: string): string {
-  switch (value) {
+  switch (normalizeValidationStatus(value)) {
     case "grounded":
       return "Well supported";
     case "partially_grounded":
@@ -875,9 +897,38 @@ function formatValidationStatus(value: string): string {
   }
 }
 
+function formatIncidentStatus(incident: QualityIncident): string {
+  return formatValidationStatus(getIncidentDisplayStatus(incident));
+}
+
+function getIncidentDisplayStatus(incident: QualityIncident): string {
+  const status = normalizeValidationStatus(incident.status);
+
+  if (status === "unsupported" && incident.retrievalResultCount > 0) {
+    return "partially_grounded";
+  }
+
+  return status;
+}
+
+function normalizeValidationStatus(value: string): string {
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_").trim();
+
+  if (
+    normalized === "partially_supported" ||
+    normalized === "partly_supported" ||
+    normalized === "partial" ||
+    normalized === "partly_grounded"
+  ) {
+    return "partially_grounded";
+  }
+
+  return normalized;
+}
+
 function formatConfidence(value: number): string {
   if (value <= 0) {
-    return "-";
+    return "";
   }
 
   return `${Math.round(value * 100)}%`;

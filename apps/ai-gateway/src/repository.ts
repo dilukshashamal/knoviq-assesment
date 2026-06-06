@@ -121,6 +121,35 @@ export class AiGatewayRepository {
     }
   }
 
+  /**
+   * Soft-deletes a conversation by setting deleted_at to now().
+   * The conversation will no longer appear in listConversations results.
+   * Messages and LLM usage records are retained for audit/observability purposes.
+   * Throws 404 if the conversation does not exist or belongs to another user/tenant.
+   */
+  async deleteConversation(input: {
+    conversationId: string;
+    tenantId: string;
+    userId: string;
+  }): Promise<void> {
+    const result = await this.pool.query(
+      `
+        UPDATE knoviq.conversations
+        SET deleted_at = now(),
+            status = 'archived'
+        WHERE tenant_id = $1
+          AND id = $2
+          AND user_id = $3
+          AND deleted_at IS NULL
+      `,
+      [input.tenantId, input.conversationId, input.userId],
+    );
+
+    if (!result.rowCount) {
+      throw notFound("Conversation was not found or already deleted");
+    }
+  }
+
   async addMessage(input: {
     content: string;
     conversationId: string;
@@ -178,6 +207,7 @@ export class AiGatewayRepository {
     conversationId: string;
     limit: number;
     tenantId: string;
+    visibleOnly?: boolean;
   }): Promise<ConversationMessage[]> {
     const result = await this.pool.query<MessageRow>(
       `
@@ -185,10 +215,11 @@ export class AiGatewayRepository {
         FROM knoviq.messages
         WHERE tenant_id = $1
           AND conversation_id = $2
+          AND ($4::boolean = false OR role IN ('user', 'assistant'))
         ORDER BY created_at DESC
         LIMIT $3
       `,
-      [input.tenantId, input.conversationId, input.limit],
+      [input.tenantId, input.conversationId, input.limit, input.visibleOnly ?? false],
     );
 
     return result.rows.reverse().map((row) => ({

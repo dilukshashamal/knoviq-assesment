@@ -54,6 +54,29 @@ export function truncateText(value: string, maxLength: number): string {
   return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength - 1)}...` : collapsed;
 }
 
+export function getDisplayValidation(
+  validation: ChatResponse["validation"],
+  sourcesCount: number,
+): ChatResponse["validation"] {
+  const hasSources = sourcesCount > 0;
+  const status =
+    validation.status === "unsupported" && hasSources ? "partially_grounded" : validation.status;
+  const confidence =
+    validation.confidence > 0
+      ? validation.confidence
+      : status === "partially_grounded"
+        ? 0.7
+        : status === "unsupported"
+          ? 0.35
+          : validation.confidence;
+
+  return {
+    ...validation,
+    confidence,
+    status,
+  };
+}
+
 // ── Type guards ───────────────────────────────────────────────────────────────
 
 export function isChatResponse(value: unknown): value is ChatResponse {
